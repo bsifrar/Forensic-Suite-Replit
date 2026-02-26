@@ -187,7 +187,19 @@ export default function MediaScanner() {
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 pb-10">
                 {media.map((item) => (
                   <div key={item.id} data-testid={`card-media-${item.id}`} className="group relative aspect-square rounded-lg overflow-hidden bg-white/5 border border-white/10 hover:border-blue-500/50 transition-colors">
-                    <div className="absolute inset-0 flex items-center justify-center opacity-30 group-hover:opacity-100 transition-opacity">
+                    {item.mimeType.startsWith("image/") ? (
+                      <img
+                        src={`/api/media/file/${item.id}`}
+                        alt={item.filename}
+                        className="absolute inset-0 w-full h-full object-cover"
+                        loading="lazy"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).style.display = "none";
+                          (e.target as HTMLImageElement).nextElementSibling?.classList.remove("hidden");
+                        }}
+                      />
+                    ) : null}
+                    <div className={`absolute inset-0 flex items-center justify-center ${item.mimeType.startsWith("image/") ? "hidden" : ""} opacity-30 group-hover:opacity-100 transition-opacity`}>
                       <ImageIcon className="w-8 h-8 text-white/50" />
                     </div>
                     <div className="absolute bottom-0 inset-x-0 p-2 bg-gradient-to-t from-black/80 to-transparent flex items-center justify-between">

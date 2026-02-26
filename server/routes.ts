@@ -19,6 +19,9 @@ import {
   detectBackups,
   generateReport,
 } from "./processors";
+import { analyzeBBBackup, decryptRemFile, type BBAnalysisResult } from "./bbAnalyzer";
+
+let bbAnalysisResults: Map<string, BBAnalysisResult & { dirPath: string }> = new Map();
 
 const upload = multer({
   dest: path.join(getUploadDir(), "tmp"),
@@ -420,6 +423,83 @@ export async function registerRoutes(
     const filePath = path.join(getOutputDir(), "reports", req.params.filename);
     if (!fs.existsSync(filePath)) return res.status(404).json({ error: "Report not found" });
     res.download(filePath);
+  });
+
+  // --- Serve uploaded media files as thumbnails ---
+  app.get("/api/media/file/:id", (req, res) => {
+    const all = storage.getScannedMedia();
+    const item = all.find(m => m.id === req.params.id);
+    if (!item || !fs.existsSync(item.path)) {
+      return res.status(404).json({ error: "File not found" });
+    }
+    const ext = path.extname(item.filename).toLowerCase();
+    const mimeMap: Record<string, string> = {
+      ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
+      ".gif": "image/gif", ".bmp": "image/bmp", ".webp": "image/webp",
+      ".svg": "image/svg+xml",
+    };
+    res.setHeader("Content-Type", mimeMap[ext] || "application/octet-stream");
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    fs.createReadStream(item.path).pipe(res);
+  });
+
+  // --- BlackBerry Backup Analysis ---
+  app.post("/api/bb/analyze", upload.array("files", 500), (req, res) => {
+    const files = req.files as Express.Multer.File[];
+    if (!files || files.length === 0) {
+      return res.status(400).json({ error: "No files uploaded" });
+    }
+
+    const uploadDir = path.join(getUploadDir(), "bb_backup", Date.now().toString());
+    fs.mkdirSync(uploadDir, { recursive: true });
+
+    for (const file of files) {
+      const safeName = path.basename(file.originalname).replace(/[^a-zA-Z0-9._-]/g, "_");
+      const dest = path.join(uploadDir, safeName);
+      fs.renameSync(file.path, dest);
+    }
+
+    const job = storage.createJob(`BB Analysis: ${files.length} files`, "backup_detect");
+    broadcast("job_update", job);
+    res.json({ jobId: job.id });
+
+    (async () => {
+      try {
+        storage.updateJob(job.id, { status: "running" });
+        const result = analyzeBBBackup(uploadDir, makeProgressFn(job.id));
+        bbAnalysisResults.set(result.sessionId, { ...result, dirPath: uploadDir });
+        storage.updateJob(job.id, { status: "completed", progress: 100, result: { sessionId: result.sessionId } });
+        broadcast("job_update", storage.getJob(job.id));
+        broadcast("bb_analysis_complete", result);
+      } catch (e: any) {
+        storage.updateJob(job.id, { status: "failed" });
+        storage.addLog("error", `BB Analysis failed: ${e.message}`, "BBAnalyzer");
+        broadcast("job_update", storage.getJob(job.id));
+      }
+    })();
+  });
+
+  app.get("/api/bb/results/:sessionId", (req, res) => {
+    const result = bbAnalysisResults.get(req.params.sessionId);
+    if (!result) return res.status(404).json({ error: "Session not found" });
+    const { dirPath, ...data } = result;
+    res.json(data);
+  });
+
+  app.post("/api/bb/decrypt/:sessionId", (req, res) => {
+    const session = bbAnalysisResults.get(req.params.sessionId);
+    if (!session) return res.status(404).json({ error: "Session not found" });
+
+    const results: any[] = [];
+    for (const rem of session.remFiles.filter(r => r.decryptable)) {
+      const remPath = path.join(session.dirPath, rem.path);
+      const result = decryptRemFile(remPath, session.keyFiles, session.dirPath);
+      results.push({ file: rem.filename, ...result });
+    }
+
+    storage.addLog("info", `Decryption attempted on ${results.length} .rem files`, "BBAnalyzer");
+    broadcast("bb_decrypt_complete", { sessionId: req.params.sessionId, results });
+    res.json(results);
   });
 
   // --- Media File Export ---

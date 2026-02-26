@@ -25,6 +25,13 @@ JuiceSuite is a browser-based forensic analysis dashboard that merges MediaScann
   - Recursive ZIP extraction
   - iOS MobileSync + BlackBerry backup detection
   - Report generation (archiver → downloadable ZIP)
+- **BlackBerry Forensics** (`server/bbAnalyzer.ts`):
+  - Deep analysis of .rem, .key, .cod, .dat, .mkf files
+  - Hex dump generation for key and data files
+  - Encryption detection via entropy analysis
+  - Multi-method decryption (XOR, AES-128-CBC, 3DES-CBC)
+  - Contact/message/media signature counting
+  - SQLite signature detection within encrypted databases
 
 ### Key Directories
 - `uploads/` - Uploaded files organized by workspace
@@ -33,12 +40,14 @@ JuiceSuite is a browser-based forensic analysis dashboard that merges MediaScann
 - `client/src/components/layout/` - DashboardLayout.tsx (sidebar nav)
 - `client/src/components/shared/` - JobQueue, LogsPanel, ReportDialog
 - `server/processors.ts` - All server-side processing logic
+- `server/bbAnalyzer.ts` - BlackBerry backup forensic analysis
 - `server/routes.ts` - API routes with WebSocket broadcasting
 
 ### API Endpoints
 - `POST /api/upload` - File upload (media_scanner or artifact_analyzer workspace)
 - `GET /api/media` - Get scanned media (optional ?category filter)
 - `GET /api/media/stats` - Classification counts
+- `GET /api/media/file/:id` - Serve uploaded media file as thumbnail
 - `GET /api/media/export` - CSV export
 - `POST /api/search` - Keyword/hex search
 - `POST /api/sqlite/explore` - Upload & explore SQLite DB
@@ -48,6 +57,9 @@ JuiceSuite is a browser-based forensic analysis dashboard that merges MediaScann
 - `POST /api/carve` - JPG/PNG carving from raw data
 - `POST /api/archive/extract` - Recursive ZIP extraction
 - `GET /api/backups` - Detected backup targets
+- `POST /api/bb/analyze` - BlackBerry backup forensic analysis
+- `GET /api/bb/results/:sessionId` - Get BB analysis results
+- `POST /api/bb/decrypt/:sessionId` - Attempt decryption of encrypted .rem files
 - `POST /api/report` - Generate report ZIP
 - `GET /api/jobs` / `POST /api/jobs/:id/cancel`
 - `GET /api/logs` / `DELETE /api/logs`
@@ -57,6 +69,7 @@ Real-time progress updates broadcast to all clients:
 - `job_progress`, `job_update`, `scan_complete`, `search_complete`
 - `sqlite_ready`, `plist_ready`, `strings_ready`, `carve_complete`
 - `archive_extracted`, `backups_detected`, `report_ready`
+- `bb_analysis_complete`, `bb_decrypt_complete`
 
 ### Dependencies (notable server-side)
 - `multer` - File uploads
