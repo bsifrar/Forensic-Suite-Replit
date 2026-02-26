@@ -1,37 +1,185 @@
-import { type User, type InsertUser } from "@shared/schema";
 import { randomUUID } from "crypto";
-
-// modify the interface with any CRUD methods
-// you might need
+import type { Job, LogEntry, ScannedMedia, KeywordHit, DetectedBackup, CarvedFile, ExtractedString, SqliteTableInfo, JobStatus } from "@shared/schema";
 
 export interface IStorage {
-  getUser(id: string): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
+  createJob(name: string, type: Job["type"]): Job;
+  getJob(id: string): Job | undefined;
+  getAllJobs(): Job[];
+  updateJob(id: string, updates: Partial<Job>): Job | undefined;
+  cancelJob(id: string): Job | undefined;
+
+  addLog(level: LogEntry["level"], message: string, module: string): LogEntry;
+  getLogs(): LogEntry[];
+  clearLogs(): void;
+
+  addScannedMedia(media: Omit<ScannedMedia, "id">): ScannedMedia;
+  getScannedMedia(category?: string): ScannedMedia[];
+  clearScannedMedia(): void;
+
+  addKeywordHit(hit: Omit<KeywordHit, "id">): KeywordHit;
+  getKeywordHits(query?: string): KeywordHit[];
+
+  addDetectedBackup(backup: Omit<DetectedBackup, "id">): DetectedBackup;
+  getDetectedBackups(): DetectedBackup[];
+
+  addCarvedFile(file: Omit<CarvedFile, "id">): CarvedFile;
+  getCarvedFiles(): CarvedFile[];
+
+  setExtractedStrings(strings: ExtractedString[]): void;
+  getExtractedStrings(): ExtractedString[];
+
+  setSqliteTables(tables: SqliteTableInfo[]): void;
+  getSqliteTables(): SqliteTableInfo[];
+  setSqliteRows(tableName: string, rows: any[]): void;
+  getSqliteRows(tableName: string): any[];
+
+  setPlistData(data: any): void;
+  getPlistData(): any;
 }
 
 export class MemStorage implements IStorage {
-  private users: Map<string, User>;
+  private jobs: Map<string, Job> = new Map();
+  private logs: LogEntry[] = [];
+  private scannedMedia: Map<string, ScannedMedia> = new Map();
+  private keywordHits: KeywordHit[] = [];
+  private detectedBackups: Map<string, DetectedBackup> = new Map();
+  private carvedFiles: Map<string, CarvedFile> = new Map();
+  private extractedStrings: ExtractedString[] = [];
+  private sqliteTables: SqliteTableInfo[] = [];
+  private sqliteRowsMap: Map<string, any[]> = new Map();
+  private plistData: any = null;
 
-  constructor() {
-    this.users = new Map();
+  createJob(name: string, type: Job["type"]): Job {
+    const job: Job = {
+      id: randomUUID(),
+      name,
+      type,
+      progress: 0,
+      status: "pending",
+      startTime: new Date().toISOString(),
+    };
+    this.jobs.set(job.id, job);
+    return job;
   }
 
-  async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
+  getJob(id: string): Job | undefined {
+    return this.jobs.get(id);
   }
 
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
+  getAllJobs(): Job[] {
+    return Array.from(this.jobs.values()).sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
   }
 
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const id = randomUUID();
-    const user: User = { ...insertUser, id };
-    this.users.set(id, user);
-    return user;
+  updateJob(id: string, updates: Partial<Job>): Job | undefined {
+    const job = this.jobs.get(id);
+    if (!job) return undefined;
+    const updated = { ...job, ...updates };
+    this.jobs.set(id, updated);
+    return updated;
+  }
+
+  cancelJob(id: string): Job | undefined {
+    return this.updateJob(id, { status: "cancelled" });
+  }
+
+  addLog(level: LogEntry["level"], message: string, module: string): LogEntry {
+    const entry: LogEntry = {
+      id: randomUUID(),
+      timestamp: new Date().toISOString(),
+      level,
+      message,
+      module,
+    };
+    this.logs.unshift(entry);
+    if (this.logs.length > 500) this.logs.pop();
+    return entry;
+  }
+
+  getLogs(): LogEntry[] {
+    return this.logs;
+  }
+
+  clearLogs(): void {
+    this.logs = [];
+  }
+
+  addScannedMedia(media: Omit<ScannedMedia, "id">): ScannedMedia {
+    const item: ScannedMedia = { ...media, id: randomUUID() };
+    this.scannedMedia.set(item.id, item);
+    return item;
+  }
+
+  getScannedMedia(category?: string): ScannedMedia[] {
+    const all = Array.from(this.scannedMedia.values());
+    if (!category || category === "all") return all;
+    return all.filter((m) => m.category === category);
+  }
+
+  clearScannedMedia(): void {
+    this.scannedMedia.clear();
+  }
+
+  addKeywordHit(hit: Omit<KeywordHit, "id">): KeywordHit {
+    const item: KeywordHit = { ...hit, id: randomUUID() };
+    this.keywordHits.push(item);
+    return item;
+  }
+
+  getKeywordHits(query?: string): KeywordHit[] {
+    if (!query) return this.keywordHits;
+    return this.keywordHits.filter((h) => h.query === query);
+  }
+
+  addDetectedBackup(backup: Omit<DetectedBackup, "id">): DetectedBackup {
+    const item: DetectedBackup = { ...backup, id: randomUUID() };
+    this.detectedBackups.set(item.id, item);
+    return item;
+  }
+
+  getDetectedBackups(): DetectedBackup[] {
+    return Array.from(this.detectedBackups.values());
+  }
+
+  addCarvedFile(file: Omit<CarvedFile, "id">): CarvedFile {
+    const item: CarvedFile = { ...file, id: randomUUID() };
+    this.carvedFiles.set(item.id, item);
+    return item;
+  }
+
+  getCarvedFiles(): CarvedFile[] {
+    return Array.from(this.carvedFiles.values());
+  }
+
+  setExtractedStrings(strings: ExtractedString[]): void {
+    this.extractedStrings = strings;
+  }
+
+  getExtractedStrings(): ExtractedString[] {
+    return this.extractedStrings;
+  }
+
+  setSqliteTables(tables: SqliteTableInfo[]): void {
+    this.sqliteTables = tables;
+  }
+
+  getSqliteTables(): SqliteTableInfo[] {
+    return this.sqliteTables;
+  }
+
+  setSqliteRows(tableName: string, rows: any[]): void {
+    this.sqliteRowsMap.set(tableName, rows);
+  }
+
+  getSqliteRows(tableName: string): any[] {
+    return this.sqliteRowsMap.get(tableName) || [];
+  }
+
+  setPlistData(data: any): void {
+    this.plistData = data;
+  }
+
+  getPlistData(): any {
+    return this.plistData;
   }
 }
 

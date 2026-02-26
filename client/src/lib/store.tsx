@@ -1,19 +1,20 @@
-import { createContext, useContext, useState, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef } from "react";
 
 export type JobStatus = "pending" | "running" | "completed" | "failed" | "cancelled";
 
 export interface Job {
   id: string;
   name: string;
-  type: "media_scan" | "artifact_extract" | "report_gen";
+  type: string;
   progress: number;
   status: JobStatus;
-  startTime?: Date;
+  startTime: string;
+  result?: any;
 }
 
 export interface LogEntry {
   id: string;
-  timestamp: Date;
+  timestamp: string;
   level: "info" | "warn" | "error" | "success";
   message: string;
   module: string;
@@ -22,75 +23,112 @@ export interface LogEntry {
 interface AppContextType {
   jobs: Job[];
   logs: LogEntry[];
-  addJob: (job: Omit<Job, "id" | "status" | "progress">) => void;
-  cancelJob: (id: string) => void;
-  addLog: (level: LogEntry["level"], message: string, module: string) => void;
-  clearLogs: () => void;
+  refreshJobs: () => Promise<void>;
+  refreshLogs: () => Promise<void>;
+  cancelJob: (id: string) => Promise<void>;
+  clearLogs: () => Promise<void>;
   isLogsOpen: boolean;
   setLogsOpen: (open: boolean) => void;
+  wsMessages: any[];
+  lastMessage: any;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [jobs, setJobs] = useState<Job[]>([
-    { id: "job-1", name: "Scan: /Volumes/Evidence/Export", type: "media_scan", progress: 45, status: "running", startTime: new Date() }
-  ]);
-  const [logs, setLogs] = useState<LogEntry[]>([
-    { id: "log-1", timestamp: new Date(), level: "info", message: "System initialized. Engine ready.", module: "System" },
-    { id: "log-2", timestamp: new Date(), level: "success", message: "Loaded 453 signatures.", module: "ArtifactAnalyzer" }
-  ]);
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isLogsOpen, setLogsOpen] = useState(false);
+  const [wsMessages, setWsMessages] = useState<any[]>([]);
+  const [lastMessage, setLastMessage] = useState<any>(null);
+  const wsRef = useRef<WebSocket | null>(null);
 
-  const addJob = (job: Omit<Job, "id" | "status" | "progress">) => {
-    const newJob: Job = {
-      ...job,
-      id: `job-${Math.random().toString(36).substr(2, 9)}`,
-      status: "pending",
-      progress: 0,
-      startTime: new Date()
-    };
-    setJobs((prev) => [newJob, ...prev]);
-    
-    // Simulate job progress
-    setTimeout(() => {
-      setJobs((prev) => prev.map(j => j.id === newJob.id ? { ...j, status: "running" } : j));
-      const interval = setInterval(() => {
-        setJobs((prev) => prev.map(j => {
-          if (j.id === newJob.id && j.status === "running") {
-            const newProgress = j.progress + Math.floor(Math.random() * 10) + 5;
-            if (newProgress >= 100) {
-              clearInterval(interval);
-              addLog("success", `Completed task: ${j.name}`, "JobQueue");
-              return { ...j, progress: 100, status: "completed" };
+  useEffect(() => {
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
+    wsRef.current = ws;
+
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        setLastMessage(msg);
+        setWsMessages(prev => [...prev.slice(-100), msg]);
+
+        if (msg.type === "job_update" || msg.type === "job_progress") {
+          setJobs(prev => {
+            const existing = prev.findIndex(j => j.id === msg.data.jobId || j.id === msg.data.id);
+            if (existing >= 0) {
+              const updated = [...prev];
+              if (msg.type === "job_progress") {
+                updated[existing] = { ...updated[existing], progress: msg.data.progress, status: "running" };
+              } else {
+                updated[existing] = msg.data;
+              }
+              return updated;
             }
-            return { ...j, progress: newProgress };
-          }
-          return j;
-        }));
-      }, 800);
-    }, 1000);
-  };
+            if (msg.type === "job_update") {
+              return [msg.data, ...prev];
+            }
+            return prev;
+          });
+        }
+      } catch {}
+    };
 
-  const cancelJob = (id: string) => {
-    setJobs((prev) => prev.map(j => j.id === id ? { ...j, status: "cancelled" } : j));
-    addLog("warn", `Cancelled task: ${id}`, "JobQueue");
-  };
+    ws.onopen = () => {
+      refreshJobs();
+      refreshLogs();
+    };
 
-  const addLog = (level: LogEntry["level"], message: string, module: string) => {
-    setLogs((prev) => [{
-      id: `log-${Math.random().toString(36).substr(2, 9)}`,
-      timestamp: new Date(),
-      level,
-      message,
-      module
-    }, ...prev]);
-  };
+    ws.onclose = () => {
+      setTimeout(() => {
+        // reconnect handled by page refresh for simplicity
+      }, 3000);
+    };
 
-  const clearLogs = () => setLogs([]);
+    return () => ws.close();
+  }, []);
+
+  const refreshJobs = useCallback(async () => {
+    try {
+      const res = await fetch("/api/jobs");
+      if (res.ok) setJobs(await res.json());
+    } catch {}
+  }, []);
+
+  const refreshLogs = useCallback(async () => {
+    try {
+      const res = await fetch("/api/logs");
+      if (res.ok) setLogs(await res.json());
+    } catch {}
+  }, []);
+
+  const cancelJob = useCallback(async (id: string) => {
+    try {
+      const res = await fetch(`/api/jobs/${id}/cancel`, { method: "POST" });
+      if (res.ok) {
+        const updated = await res.json();
+        setJobs(prev => prev.map(j => j.id === id ? updated : j));
+      }
+    } catch {}
+  }, []);
+
+  const clearLogs = useCallback(async () => {
+    try {
+      await fetch("/api/logs", { method: "DELETE" });
+      setLogs([]);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      refreshLogs();
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [refreshLogs]);
 
   return (
-    <AppContext.Provider value={{ jobs, logs, addJob, cancelJob, addLog, clearLogs, isLogsOpen, setLogsOpen }}>
+    <AppContext.Provider value={{ jobs, logs, refreshJobs, refreshLogs, cancelJob, clearLogs, isLogsOpen, setLogsOpen, wsMessages, lastMessage }}>
       {children}
     </AppContext.Provider>
   );

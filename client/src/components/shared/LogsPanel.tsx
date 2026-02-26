@@ -13,7 +13,7 @@ export default function LogsPanel() {
         <SheetHeader className="p-6 border-b border-white/10 pb-4">
           <div className="flex items-center justify-between">
             <SheetTitle className="text-lg">System Logs</SheetTitle>
-            <Button variant="ghost" size="sm" onClick={clearLogs} className="h-8 text-muted-foreground hover:text-red-400">
+            <Button data-testid="button-clear-logs" variant="ghost" size="sm" onClick={clearLogs} className="h-8 text-muted-foreground hover:text-red-400">
               <Trash2 className="w-4 h-4 mr-2" />
               Clear
             </Button>
@@ -28,7 +28,7 @@ export default function LogsPanel() {
               {logs.map(log => (
                 <div key={log.id} className="flex items-start gap-3 py-1 border-b border-white/5 last:border-0">
                   <span className="text-muted-foreground shrink-0 w-16">
-                    {log.timestamp.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute:'2-digit', second:'2-digit' })}
+                    {new Date(log.timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute:'2-digit', second:'2-digit' })}
                   </span>
                   <span className={`shrink-0 uppercase font-semibold w-12 ${
                     log.level === 'info' ? 'text-blue-400' :

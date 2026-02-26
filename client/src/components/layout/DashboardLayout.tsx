@@ -123,16 +123,14 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
 function NavItem({ href, icon, label, active }: { href: string; icon: ReactNode; label: string; active: boolean }) {
   return (
-    <Link href={href}>
-      <a className={cn(
-        "flex items-center gap-3 px-3 py-2.5 rounded-md transition-all duration-200 text-sm font-medium",
-        active 
-          ? "bg-blue-600/10 text-blue-500" 
-          : "text-muted-foreground hover:bg-white/5 hover:text-white"
-      )}>
-        {icon}
-        {label}
-      </a>
+    <Link href={href} className={cn(
+      "flex items-center gap-3 px-3 py-2.5 rounded-md transition-all duration-200 text-sm font-medium",
+      active 
+        ? "bg-blue-600/10 text-blue-500" 
+        : "text-muted-foreground hover:bg-white/5 hover:text-white"
+    )}>
+      {icon}
+      {label}
     </Link>
   );
 }
