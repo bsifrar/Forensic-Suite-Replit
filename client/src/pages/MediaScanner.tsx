@@ -24,7 +24,8 @@ export default function MediaScanner() {
     { id: "all", label: "All Media", count: hasScanned ? 1245 : 0, icon: <ImageIcon className="w-4 h-4" /> },
     { id: "safe", label: "Safe", count: hasScanned ? 980 : 0, icon: <Shield className="w-4 h-4 text-green-400" /> },
     { id: "suggestive", label: "Suggestive", count: hasScanned ? 142 : 0, icon: <EyeOff className="w-4 h-4 text-yellow-400" /> },
-    { id: "explicit", label: "Explicit", count: hasScanned ? 123 : 0, icon: <AlertTriangle className="w-4 h-4 text-red-500" /> },
+    { id: "sexy", label: "Sexy", count: hasScanned ? 85 : 0, icon: <EyeOff className="w-4 h-4 text-orange-500" /> },
+    { id: "explicit", label: "Explicit", count: hasScanned ? 38 : 0, icon: <AlertTriangle className="w-4 h-4 text-red-500" /> },
   ];
 
   // Dummy mock data for visual grid
@@ -121,6 +122,7 @@ export default function MediaScanner() {
                     <Badge variant="outline" className={`text-[9px] px-1 border-0 ${
                       img.type === 'safe' ? 'bg-green-500/20 text-green-400' :
                       img.type === 'suggestive' ? 'bg-yellow-500/20 text-yellow-400' :
+                      img.type === 'sexy' ? 'bg-orange-500/20 text-orange-400' :
                       img.type === 'explicit' ? 'bg-red-500/20 text-red-400' : ''
                     }`}>
                       {img.type}

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAppContext } from "@/lib/store";
-import { Search, Database, FileCode2, Code, Smartphone, HardDrive, Archive, Download } from "lucide-react";
+import { Search, Database, FileCode2, Code, Smartphone, HardDrive, Archive, Download, FileText, Image as ImageIcon } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -53,9 +53,17 @@ export default function ArtifactAnalyzer() {
             <FileCode2 className="w-4 h-4 mr-2" />
             Plist Viewer
           </TabsTrigger>
+          <TabsTrigger value="strings" className="data-[state=active]:bg-blue-600/20 data-[state=active]:text-blue-400">
+            <FileText className="w-4 h-4 mr-2" />
+            Strings Extraction
+          </TabsTrigger>
+          <TabsTrigger value="carving" className="data-[state=active]:bg-blue-600/20 data-[state=active]:text-blue-400">
+            <ImageIcon className="w-4 h-4 mr-2" />
+            Media Carving
+          </TabsTrigger>
           <TabsTrigger value="archives" className="data-[state=active]:bg-blue-600/20 data-[state=active]:text-blue-400">
             <Archive className="w-4 h-4 mr-2" />
-            Deep Archive Extractor
+            Deep Archives
           </TabsTrigger>
         </TabsList>
 
@@ -252,6 +260,31 @@ export default function ArtifactAnalyzer() {
                 Automatically extract nested archives (.zip inside .rar inside .tar) down to 10 levels deep for thorough scanning.
               </p>
               <Button className="bg-blue-600 hover:bg-blue-700">Start Extraction Module</Button>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="strings" className="m-0 h-[600px]">
+            <Card className="border-white/10 glass-panel h-full flex flex-col overflow-hidden items-center justify-center bg-gradient-to-b from-transparent to-black/20">
+              <FileText className="w-12 h-12 text-muted-foreground mb-4 opacity-50" />
+              <h3 className="text-lg font-medium text-white/80">Raw Strings Extraction</h3>
+              <p className="text-sm text-muted-foreground max-w-sm text-center mt-2 mb-6">
+                Extract readable ASCII, UTF-8, and UTF-16 strings from binary files, RAM dumps, or unallocated space chunks.
+              </p>
+              <div className="flex gap-2">
+                 <Input placeholder="Min length (e.g. 4)" type="number" className="w-32 bg-black/40 border-white/10" defaultValue={4} />
+                 <Button className="bg-blue-600 hover:bg-blue-700">Extract Strings</Button>
+              </div>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="carving" className="m-0 h-[600px]">
+            <Card className="border-white/10 glass-panel h-full flex flex-col overflow-hidden items-center justify-center bg-gradient-to-b from-transparent to-black/20">
+              <ImageIcon className="w-12 h-12 text-muted-foreground mb-4 opacity-50" />
+              <h3 className="text-lg font-medium text-white/80">JPG/PNG File Carving</h3>
+              <p className="text-sm text-muted-foreground max-w-sm text-center mt-2 mb-6">
+                Recover deleted or orphaned image files by scanning for known headers and footers without relying on filesystem allocation tables.
+              </p>
+              <Button className="bg-blue-600 hover:bg-blue-700">Start Carving Process</Button>
             </Card>
           </TabsContent>
 

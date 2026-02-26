@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import { ReactNode, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { 
   LayoutDashboard, 
@@ -16,6 +16,7 @@ import { useAppContext } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import LogsPanel from "@/components/shared/LogsPanel";
 import JobQueue from "@/components/shared/JobQueue";
+import ReportDialog from "@/components/shared/ReportDialog";
 import { Progress } from "@/components/ui/progress";
 
 interface DashboardLayoutProps {
@@ -25,6 +26,7 @@ interface DashboardLayoutProps {
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [location] = useLocation();
   const { isLogsOpen, setLogsOpen, jobs } = useAppContext();
+  const [isReportOpen, setIsReportOpen] = useState(false);
 
   const activeJobs = jobs.filter(j => j.status === "running" || j.status === "pending");
   const overallProgress = activeJobs.length > 0 
@@ -65,10 +67,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               <TerminalSquare className="w-4 h-4 mr-3" />
               System Logs
             </Button>
-            <Button variant="ghost" className="justify-start text-muted-foreground hover:text-white w-full" onClick={() => {
-              // trigger report gen
-              alert("Report generation simulated.");
-            }}>
+            <Button variant="ghost" className="justify-start text-muted-foreground hover:text-white w-full" onClick={() => setIsReportOpen(true)}>
               <FileText className="w-4 h-4 mr-3" />
               Generate Report
             </Button>
@@ -117,6 +116,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       </main>
 
       <LogsPanel />
+      <ReportDialog open={isReportOpen} onOpenChange={setIsReportOpen} />
     </div>
   );
 }
