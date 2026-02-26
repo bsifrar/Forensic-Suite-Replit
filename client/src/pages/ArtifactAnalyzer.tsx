@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import DropZone from "@/components/shared/DropZone";
 
 interface BBStats {
   remCount: number;
@@ -158,6 +159,17 @@ export default function ArtifactAnalyzer() {
     await fetch(endpoint, { method: "POST", body: formData });
   };
 
+  const uploadFiles = async (files: File[], endpoint: string, fieldName = "files", extraFields?: Record<string, string>) => {
+    const formData = new FormData();
+    for (const f of files) formData.append(fieldName, f);
+    if (extraFields) {
+      for (const [k, v] of Object.entries(extraFields)) {
+        formData.append(k, v);
+      }
+    }
+    await fetch(endpoint, { method: "POST", body: formData });
+  };
+
   const handleBackupUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     const formData = new FormData();
@@ -166,14 +178,22 @@ export default function ArtifactAnalyzer() {
     await fetch("/api/upload", { method: "POST", body: formData });
   };
 
+  const handleBackupDrop = async (files: File[]) => {
+    if (files.length === 0) return;
+    const formData = new FormData();
+    for (const f of files) formData.append("files", f);
+    formData.append("workspace", "artifact_analyzer");
+    await fetch("/api/upload", { method: "POST", body: formData });
+  };
+
   const [bbError, setBBError] = useState<string | null>(null);
 
-  const handleBBUpload = async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
+  const handleBBUpload = async (files: File[]) => {
+    if (files.length === 0) return;
     setBBUploading(true);
     setBBError(null);
     const formData = new FormData();
-    for (let i = 0; i < files.length; i++) formData.append("files", files[i]);
+    for (const f of files) formData.append("files", f);
     try {
       const res = await fetch("/api/bb/analyze", { method: "POST", body: formData });
       if (!res.ok) {
@@ -269,38 +289,20 @@ export default function ArtifactAnalyzer() {
           {/* BlackBerry Forensics */}
           <TabsContent value="blackberry" className="m-0">
             {!bbAnalysis ? (
-              <div className="flex flex-col items-center justify-center py-16">
-                <div className="w-20 h-20 rounded-2xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center mb-6">
-                  <Shield className="w-10 h-10 text-purple-400" />
-                </div>
-                <h3 className="text-2xl font-bold text-white mb-2">BlackBerry Backup Forensics</h3>
-                <p className="text-muted-foreground max-w-lg text-center mb-2">
-                  Upload BlackBerry backup files (.bbb, .ipd, .rem, .cod, .dat, .key, .mkf) for deep forensic analysis including encryption detection, key file hex dumps, and artifact recovery.
-                </p>
-                <p className="text-xs text-muted-foreground/60 mb-4">Supports encrypted backup analysis with multiple decryption methods (XOR, AES-128, 3DES)</p>
-                {bbError && (
-                  <div className="mb-4 px-4 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
-                    {bbError}
-                  </div>
-                )}
-                <Button
-                  data-testid="button-bb-upload"
-                  onClick={() => bbInputRef.current?.click()}
-                  className="bg-purple-600 hover:bg-purple-700 text-white px-8 py-3 text-base"
-                  disabled={bbUploading}
-                >
-                  {bbUploading ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Upload className="w-5 h-5 mr-2" />}
-                  {bbUploading ? "Analyzing..." : "Upload BB Backup Files"}
-                </Button>
-                <input
-                  ref={bbInputRef}
-                  type="file"
-                  multiple
-                  accept=".bbb,.ipd,.rem,.cod,.dat,.key,.mkf,.zip"
-                  className="hidden"
-                  onChange={(e) => handleBBUpload(e.target.files)}
-                />
-              </div>
+              <DropZone
+                testId="dropzone-bb"
+                onFiles={handleBBUpload}
+                icon={<Shield className="w-10 h-10 text-purple-400" />}
+                title="BlackBerry Backup Forensics"
+                description="Upload BlackBerry backup files (.bbb, .ipd, .rem, .cod, .dat, .key, .mkf) for deep forensic analysis including encryption detection, key file hex dumps, and artifact recovery."
+                subtitle="Supports encrypted backup analysis with multiple decryption methods (XOR, AES-128, 3DES)"
+                accept=".bbb,.ipd,.rem,.cod,.dat,.key,.mkf,.zip"
+                loading={bbUploading}
+                loadingText="Analyzing..."
+                buttonText="Upload BB Backup Files"
+                buttonClassName="bg-purple-600 hover:bg-purple-700 text-white"
+                error={bbError}
+              />
             ) : (
               <div className="flex flex-col gap-6">
                 <div className="flex items-center justify-between">
@@ -705,19 +707,16 @@ export default function ArtifactAnalyzer() {
           {/* SQLite Explorer */}
           <TabsContent value="sqlite" className="m-0 flex flex-col h-[600px]">
             {sqliteTables.length === 0 ? (
-              <Card className="border-white/10 glass-panel h-full flex flex-col items-center justify-center">
-                <Database className="w-12 h-12 text-muted-foreground mb-4 opacity-50" />
-                <h3 className="text-lg font-medium text-white/80">Upload a SQLite Database</h3>
-                <p className="text-sm text-muted-foreground max-w-sm text-center mt-2 mb-6">
-                  Upload .sqlite, .db, or .sqlitedb files to browse tables and export data to CSV.
-                </p>
-                <Button data-testid="button-upload-sqlite" onClick={() => sqliteInputRef.current?.click()} className="bg-blue-600 hover:bg-blue-700">
-                  <Upload className="w-4 h-4 mr-2" /> Upload SQLite File
-                </Button>
-                <input ref={sqliteInputRef} type="file" accept=".sqlite,.db,.sqlitedb,.sqlite3" className="hidden" onChange={(e) => {
-                  if (e.target.files?.[0]) uploadFile(e.target.files[0], "/api/sqlite/explore");
-                }} />
-              </Card>
+              <DropZone
+                testId="dropzone-sqlite"
+                onFiles={(files) => { if (files[0]) uploadFile(files[0], "/api/sqlite/explore"); }}
+                icon={<Database className="w-10 h-10 text-purple-400" />}
+                title="SQLite Database Explorer"
+                description="Upload .sqlite, .db, or .sqlitedb files to browse tables and export data to CSV."
+                accept=".sqlite,.db,.sqlitedb,.sqlite3"
+                multiple={false}
+                buttonText="Upload SQLite File"
+              />
             ) : (
               <Card className="border-white/10 glass-panel flex-1 flex flex-col overflow-hidden">
                 <div className="border-b border-white/10 p-4 bg-black/20 flex items-center justify-between">
@@ -784,19 +783,16 @@ export default function ArtifactAnalyzer() {
           {/* Plist Viewer */}
           <TabsContent value="plists" className="m-0 h-[600px]">
             {!plistData ? (
-              <Card className="border-white/10 glass-panel h-full flex flex-col overflow-hidden items-center justify-center">
-                <FileCode2 className="w-12 h-12 text-muted-foreground mb-4 opacity-50" />
-                <h3 className="text-lg font-medium text-white/80">Upload a Property List (.plist)</h3>
-                <p className="text-sm text-muted-foreground max-w-sm text-center mt-2 mb-6">
-                  Parse and view both binary and XML plist formats natively.
-                </p>
-                <Button data-testid="button-upload-plist" onClick={() => plistInputRef.current?.click()} variant="outline" className="border-white/10">
-                  <Upload className="w-4 h-4 mr-2" /> Upload Plist
-                </Button>
-                <input ref={plistInputRef} type="file" accept=".plist" className="hidden" onChange={(e) => {
-                  if (e.target.files?.[0]) uploadFile(e.target.files[0], "/api/plist/parse");
-                }} />
-              </Card>
+              <DropZone
+                testId="dropzone-plist"
+                onFiles={(files) => { if (files[0]) uploadFile(files[0], "/api/plist/parse"); }}
+                icon={<FileCode2 className="w-10 h-10 text-green-400" />}
+                title="Property List Viewer"
+                description="Parse and view both binary and XML plist formats natively."
+                accept=".plist"
+                multiple={false}
+                buttonText="Upload Plist"
+              />
             ) : (
               <Card className="border-white/10 glass-panel h-full flex flex-col overflow-hidden">
                 <div className="border-b border-white/10 p-4 bg-black/20 flex items-center justify-between">
@@ -821,22 +817,20 @@ export default function ArtifactAnalyzer() {
           {/* Strings */}
           <TabsContent value="strings" className="m-0 h-[600px]">
             {extractedStrings.total === 0 ? (
-              <Card className="border-white/10 glass-panel h-full flex flex-col overflow-hidden items-center justify-center">
-                <FileText className="w-12 h-12 text-muted-foreground mb-4 opacity-50" />
-                <h3 className="text-lg font-medium text-white/80">Raw Strings Extraction</h3>
-                <p className="text-sm text-muted-foreground max-w-sm text-center mt-2 mb-6">
-                  Extract readable ASCII strings from binary files, RAM dumps, or unallocated space.
-                </p>
-                <div className="flex gap-2 items-center">
-                  <Input placeholder="Min length" type="number" className="w-28 bg-black/40 border-white/10" value={minStringLen} onChange={(e) => setMinStringLen(parseInt(e.target.value) || 4)} />
-                  <Button data-testid="button-extract-strings" onClick={() => stringsInputRef.current?.click()} className="bg-blue-600 hover:bg-blue-700">
-                    <Upload className="w-4 h-4 mr-2" /> Upload & Extract
-                  </Button>
-                  <input ref={stringsInputRef} type="file" className="hidden" onChange={(e) => {
-                    if (e.target.files?.[0]) uploadFile(e.target.files[0], "/api/strings/extract", { minLength: String(minStringLen) });
-                  }} />
+              <DropZone
+                testId="dropzone-strings"
+                onFiles={(files) => { if (files[0]) uploadFile(files[0], "/api/strings/extract", { minLength: String(minStringLen) }); }}
+                icon={<FileText className="w-10 h-10 text-cyan-400" />}
+                title="Raw Strings Extraction"
+                description="Extract readable ASCII strings from binary files, RAM dumps, or unallocated space."
+                multiple={false}
+                buttonText="Upload & Extract"
+              >
+                <div className="flex gap-2 items-center mb-2" onClick={(e) => e.stopPropagation()}>
+                  <span className="text-xs text-muted-foreground">Min length:</span>
+                  <Input placeholder="4" type="number" className="w-20 h-8 bg-black/40 border-white/10 text-sm" value={minStringLen} onChange={(e) => setMinStringLen(parseInt(e.target.value) || 4)} />
                 </div>
-              </Card>
+              </DropZone>
             ) : (
               <Card className="border-white/10 glass-panel h-full flex flex-col overflow-hidden">
                 <div className="border-b border-white/10 p-4 bg-black/20 flex items-center justify-between">
@@ -875,19 +869,15 @@ export default function ArtifactAnalyzer() {
           {/* Carving */}
           <TabsContent value="carving" className="m-0 h-[600px]">
             {carvedFiles.length === 0 ? (
-              <Card className="border-white/10 glass-panel h-full flex flex-col overflow-hidden items-center justify-center">
-                <ImageIcon className="w-12 h-12 text-muted-foreground mb-4 opacity-50" />
-                <h3 className="text-lg font-medium text-white/80">JPG/PNG File Carving</h3>
-                <p className="text-sm text-muted-foreground max-w-sm text-center mt-2 mb-6">
-                  Recover deleted or orphaned image files by scanning for JPEG and PNG headers/footers in raw binary data.
-                </p>
-                <Button data-testid="button-carve" onClick={() => carveInputRef.current?.click()} className="bg-blue-600 hover:bg-blue-700">
-                  <Upload className="w-4 h-4 mr-2" /> Upload Binary & Carve
-                </Button>
-                <input ref={carveInputRef} type="file" className="hidden" onChange={(e) => {
-                  if (e.target.files?.[0]) uploadFile(e.target.files[0], "/api/carve");
-                }} />
-              </Card>
+              <DropZone
+                testId="dropzone-carve"
+                onFiles={(files) => { if (files[0]) uploadFile(files[0], "/api/carve"); }}
+                icon={<ImageIcon className="w-10 h-10 text-orange-400" />}
+                title="JPG/PNG File Carving"
+                description="Recover deleted or orphaned image files by scanning for JPEG and PNG headers/footers in raw binary data."
+                multiple={false}
+                buttonText="Upload Binary & Carve"
+              />
             ) : (
               <Card className="border-white/10 glass-panel h-full flex flex-col overflow-hidden">
                 <div className="border-b border-white/10 p-4 bg-black/20 flex items-center justify-between">
@@ -923,19 +913,16 @@ export default function ArtifactAnalyzer() {
           {/* Archives */}
           <TabsContent value="archives" className="m-0 h-[600px]">
             {extractedArchiveFiles.length === 0 ? (
-              <Card className="border-white/10 glass-panel h-full flex flex-col overflow-hidden items-center justify-center">
-                <Archive className="w-12 h-12 text-muted-foreground mb-4 opacity-50" />
-                <h3 className="text-lg font-medium text-white/80">Recursive Deep Extraction</h3>
-                <p className="text-sm text-muted-foreground max-w-sm text-center mt-2 mb-6">
-                  Upload a ZIP to automatically extract nested archives for thorough scanning.
-                </p>
-                <Button data-testid="button-extract-archive" onClick={() => archiveInputRef.current?.click()} className="bg-blue-600 hover:bg-blue-700">
-                  <Upload className="w-4 h-4 mr-2" /> Upload Archive
-                </Button>
-                <input ref={archiveInputRef} type="file" accept=".zip,.tar,.gz,.rar,.7z" className="hidden" onChange={(e) => {
-                  if (e.target.files?.[0]) uploadFile(e.target.files[0], "/api/archive/extract");
-                }} />
-              </Card>
+              <DropZone
+                testId="dropzone-archive"
+                onFiles={(files) => { if (files[0]) uploadFile(files[0], "/api/archive/extract"); }}
+                icon={<Archive className="w-10 h-10 text-blue-400" />}
+                title="Recursive Deep Extraction"
+                description="Upload a ZIP to automatically extract nested archives for thorough scanning."
+                accept=".zip,.tar,.gz,.rar,.7z"
+                multiple={false}
+                buttonText="Upload Archive"
+              />
             ) : (
               <Card className="border-white/10 glass-panel h-full flex flex-col overflow-hidden">
                 <div className="border-b border-white/10 p-4 bg-black/20 flex items-center justify-between">

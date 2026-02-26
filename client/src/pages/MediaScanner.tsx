@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import DropZone from "@/components/shared/DropZone";
 
 interface MediaItem {
   id: string;
@@ -74,6 +75,18 @@ export default function MediaScanner() {
     setIsUploading(false);
   };
 
+  const handleDropFiles = async (files: File[]) => {
+    if (files.length === 0) return;
+    setIsUploading(true);
+    const formData = new FormData();
+    for (const f of files) formData.append("files", f);
+    formData.append("workspace", "media_scanner");
+    try {
+      await fetch("/api/upload", { method: "POST", body: formData });
+    } catch {}
+    setIsUploading(false);
+  };
+
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     handleUpload(e.dataTransfer.files);
@@ -121,26 +134,17 @@ export default function MediaScanner() {
       </div>
 
       {!hasScanned && (
-        <Card
-          data-testid="card-dropzone"
-          className="border-white/10 glass-panel bg-white/5 border-dashed cursor-pointer"
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={handleDrop}
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <CardContent className="flex flex-col items-center justify-center p-12 text-center">
-            <div className="w-16 h-16 rounded-full bg-blue-500/10 flex items-center justify-center mb-4">
-              {isUploading ? <Loader2 className="w-8 h-8 text-blue-500 animate-spin" /> : <UploadCloud className="w-8 h-8 text-blue-500" />}
-            </div>
-            <h3 className="text-xl font-semibold mb-2">
-              {isUploading ? "Uploading..." : "Drag and drop evidence files"}
-            </h3>
-            <p className="text-sm text-muted-foreground max-w-md mb-6">
-              Drop files or a ZIP archive here to begin server-side classification into Safe, Suggestive, Sexy, and Explicit categories. All processing happens locally.
-            </p>
-            <Button variant="secondary" disabled={isUploading}>Browse Files</Button>
-          </CardContent>
-        </Card>
+        <DropZone
+          testId="card-dropzone"
+          onFiles={handleDropFiles}
+          icon={<UploadCloud className="w-10 h-10 text-blue-500" />}
+          title="Drag and drop evidence files"
+          description="Drop files, folders, or a ZIP archive here to begin server-side classification into Safe, Suggestive, Sexy, and Explicit categories. All processing happens locally."
+          accept="image/*,video/*,.zip"
+          loading={isUploading}
+          loadingText="Uploading..."
+          buttonText="Browse Files"
+        />
       )}
 
       {hasScanned && (
