@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useAppContext } from "@/lib/store";
-import { Search, Database, FileCode2, Smartphone, HardDrive, Archive, Download, FileText, Image as ImageIcon, Loader2, Upload, Lock, Key, Shield, ChevronDown, ChevronRight, MessageSquare, Users, Disc, BarChart3 } from "lucide-react";
+import { Search, Database, FileCode2, Smartphone, HardDrive, Archive, Download, FileText, Image as ImageIcon, Loader2, Upload, Lock, Key, Shield, ChevronDown, ChevronRight, MessageSquare, Users, Disc, BarChart3, Calendar, Clock, FileImage, Activity, CheckCircle2, XCircle, AlertTriangle, Info } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import DropZone from "@/components/shared/DropZone";
 interface BBStats {
   remCount: number;
   encryptedCount: number;
+  remfHeaderCount: number;
   decryptableCount: number;
   sqliteFound: number;
   mediaTotal: number;
@@ -34,10 +35,49 @@ interface BBRemFile {
   path: string;
   size: number;
   encrypted: boolean;
+  hasRemfHeader: boolean;
   decryptable: boolean;
   stringsFound: number;
   mediaFound: number;
   sqliteFound: boolean;
+}
+
+interface BBBackupFormat {
+  type: string;
+  confidence: number;
+  details: string;
+  manifestFound: boolean;
+  pkgInfoFound: boolean;
+  archiveFiles: string[];
+}
+
+interface BBDateArtifact {
+  source: string;
+  rawValue: string;
+  decoded: string;
+  format: string;
+}
+
+interface BBThumbsInfo {
+  filename: string;
+  path: string;
+  size: number;
+  valid: boolean;
+  thumbnailCount: number;
+}
+
+interface BB10Artifact {
+  category: string;
+  artifactPath: string;
+  description: string;
+  found: boolean;
+}
+
+interface BBEventLog {
+  filename: string;
+  path: string;
+  size: number;
+  entries: number;
 }
 
 interface BBAnalysis {
@@ -49,6 +89,11 @@ interface BBAnalysis {
   datFiles: { filename: string; path: string; size: number; hexDump: string }[];
   mkfFiles: { filename: string; path: string; size: number }[];
   nestedZips: string[];
+  backupFormat: BBBackupFormat;
+  dateArtifacts: BBDateArtifact[];
+  thumbsFiles: BBThumbsInfo[];
+  bb10Artifacts: BB10Artifact[];
+  eventLogs: BBEventLog[];
   stats: BBStats;
 }
 
@@ -334,16 +379,62 @@ export default function ArtifactAnalyzer() {
                   </div>
                 </div>
 
-                {/* Stats Grid */}
+                {bbAnalysis.backupFormat && (
+                  <Card className="border-white/10 glass-panel" data-testid="card-backup-format">
+                    <CardContent className="p-4">
+                      <div className="flex items-start gap-4">
+                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${
+                          bbAnalysis.backupFormat.confidence >= 80 ? "bg-green-500/10" :
+                          bbAnalysis.backupFormat.confidence >= 50 ? "bg-amber-500/10" : "bg-red-500/10"
+                        }`}>
+                          <HardDrive className={`w-6 h-6 ${
+                            bbAnalysis.backupFormat.confidence >= 80 ? "text-green-400" :
+                            bbAnalysis.backupFormat.confidence >= 50 ? "text-amber-400" : "text-red-400"
+                          }`} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-sm font-semibold text-white">{bbAnalysis.backupFormat.type.replace(/_/g, " ")}</span>
+                            <Badge variant="outline" className={`text-[10px] border-0 ${
+                              bbAnalysis.backupFormat.confidence >= 80 ? "bg-green-500/20 text-green-300" :
+                              bbAnalysis.backupFormat.confidence >= 50 ? "bg-amber-500/20 text-amber-300" : "bg-red-500/20 text-red-300"
+                            }`}>
+                              {bbAnalysis.backupFormat.confidence}% confidence
+                            </Badge>
+                            {bbAnalysis.backupFormat.manifestFound && (
+                              <Badge variant="outline" className="text-[10px] border-0 bg-blue-500/20 text-blue-300">Manifest.xml</Badge>
+                            )}
+                            {bbAnalysis.backupFormat.pkgInfoFound && (
+                              <Badge variant="outline" className="text-[10px] border-0 bg-purple-500/20 text-purple-300">PkgInfo</Badge>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground leading-relaxed">{bbAnalysis.backupFormat.details}</p>
+                          {bbAnalysis.backupFormat.archiveFiles.length > 0 && (
+                            <div className="mt-2 flex flex-wrap gap-1">
+                              {bbAnalysis.backupFormat.archiveFiles.map(af => (
+                                <Badge key={af} variant="outline" className="text-[10px] border-white/10 text-muted-foreground font-mono">{af}</Badge>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
                 <div className="grid grid-cols-4 gap-3">
                   <StatCard icon={<Disc className="w-5 h-5 text-purple-400" />} label="REM Files" value={bbAnalysis.stats.remCount} color="purple" />
                   <StatCard icon={<Lock className="w-5 h-5 text-red-400" />} label="Encrypted" value={bbAnalysis.stats.encryptedCount} color="red" />
+                  <StatCard icon={<Shield className="w-5 h-5 text-rose-400" />} label="REMF Header" value={bbAnalysis.stats.remfHeaderCount} color="rose" />
                   <StatCard icon={<Key className="w-5 h-5 text-amber-400" />} label="Decryptable" value={bbAnalysis.stats.decryptableCount} color="amber" />
                   <StatCard icon={<Database className="w-5 h-5 text-blue-400" />} label="SQLite Found" value={bbAnalysis.stats.sqliteFound} color="blue" />
                   <StatCard icon={<ImageIcon className="w-5 h-5 text-green-400" />} label="Media Total" value={bbAnalysis.stats.mediaTotal} color="green" />
                   <StatCard icon={<MessageSquare className="w-5 h-5 text-cyan-400" />} label="Messages" value={bbAnalysis.stats.messagesFound} color="cyan" />
                   <StatCard icon={<Key className="w-5 h-5 text-yellow-400" />} label="Key Files" value={bbAnalysis.stats.keyFileCount} color="yellow" />
                   <StatCard icon={<Users className="w-5 h-5 text-pink-400" />} label="Contacts" value={bbAnalysis.stats.contactsFound} color="pink" />
+                  <StatCard icon={<Calendar className="w-5 h-5 text-indigo-400" />} label="Date Artifacts" value={bbAnalysis.dateArtifacts?.length || 0} color="indigo" />
+                  <StatCard icon={<FileImage className="w-5 h-5 text-teal-400" />} label="Thumb Caches" value={bbAnalysis.thumbsFiles?.length || 0} color="teal" />
+                  <StatCard icon={<Activity className="w-5 h-5 text-orange-400" />} label="Event Logs" value={bbAnalysis.eventLogs?.length || 0} color="orange" />
                 </div>
 
                 {/* Key Files */}
@@ -410,6 +501,7 @@ export default function ArtifactAnalyzer() {
                             <TableHead>Filename</TableHead>
                             <TableHead>Size</TableHead>
                             <TableHead>Encrypted</TableHead>
+                            <TableHead>REMF</TableHead>
                             <TableHead>Decryptable</TableHead>
                             <TableHead>Strings</TableHead>
                             <TableHead>Media</TableHead>
@@ -424,6 +516,11 @@ export default function ArtifactAnalyzer() {
                               <TableCell>
                                 <Badge variant="outline" className={`text-[10px] border-0 ${rem.encrypted ? "bg-red-500/20 text-red-300" : "bg-green-500/20 text-green-300"}`}>
                                   {rem.encrypted ? "Yes" : "No"}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant="outline" className={`text-[10px] border-0 ${rem.hasRemfHeader ? "bg-rose-500/20 text-rose-300" : "bg-white/5 text-muted-foreground"}`}>
+                                  {rem.hasRemfHeader ? "0x52454D46" : "None"}
                                 </Badge>
                               </TableCell>
                               <TableCell>
@@ -553,6 +650,169 @@ export default function ArtifactAnalyzer() {
                                   {dr.success ? "Decrypted" : "Failed"}
                                 </Badge>
                               </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {bbAnalysis.bb10Artifacts && bbAnalysis.bb10Artifacts.some(a => a.found) && (
+                  <Card className="border-white/10 glass-panel" data-testid="card-bb10-artifacts">
+                    <CardHeader className="pb-3 border-b border-white/5">
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <Smartphone className="w-4 h-4 text-blue-400" />
+                        BB10 Artifact Paths
+                      </CardTitle>
+                      <CardDescription className="text-xs">Known BlackBerry 10 forensic artifact locations detected in this backup</CardDescription>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                      <div className="divide-y divide-white/5">
+                        {bbAnalysis.bb10Artifacts.filter(a => a.found).map((artifact) => (
+                          <div key={artifact.category} className="flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition-colors">
+                            <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-white">{artifact.category}</p>
+                              <p className="text-[11px] text-muted-foreground">{artifact.description}</p>
+                            </div>
+                            <code className="text-[10px] text-blue-300/70 font-mono bg-blue-500/5 px-2 py-1 rounded">{artifact.artifactPath}</code>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {bbAnalysis.bb10Artifacts && bbAnalysis.bb10Artifacts.some(a => !a.found) && (
+                  <details className="group">
+                    <summary className="cursor-pointer text-xs text-muted-foreground hover:text-white/70 transition-colors flex items-center gap-2 px-1">
+                      <ChevronRight className="w-3 h-3 group-open:rotate-90 transition-transform" />
+                      {bbAnalysis.bb10Artifacts.filter(a => !a.found).length} BB10 artifact paths not found in this backup
+                    </summary>
+                    <Card className="border-white/5 glass-panel mt-2 opacity-60">
+                      <CardContent className="p-0">
+                        <div className="divide-y divide-white/5">
+                          {bbAnalysis.bb10Artifacts.filter(a => !a.found).map((artifact) => (
+                            <div key={artifact.category} className="flex items-center gap-3 px-4 py-2 text-muted-foreground">
+                              <XCircle className="w-3 h-3 shrink-0" />
+                              <span className="text-xs">{artifact.category}</span>
+                              <code className="text-[10px] font-mono ml-auto">{artifact.artifactPath}</code>
+                            </div>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </details>
+                )}
+
+                {bbAnalysis.thumbsFiles && bbAnalysis.thumbsFiles.length > 0 && (
+                  <Card className="border-white/10 glass-panel" data-testid="card-bbthumbs">
+                    <CardHeader className="pb-3 border-b border-white/5">
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <FileImage className="w-4 h-4 text-teal-400" />
+                        BBThumbs Cache Files ({bbAnalysis.thumbsFiles.length})
+                      </CardTitle>
+                      <CardDescription className="text-xs">Thumbnail cache databases (magic: 0x24052003). Contains embedded JPEG thumbnails.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                      <Table>
+                        <TableHeader className="bg-black/20">
+                          <TableRow className="border-white/5">
+                            <TableHead>File</TableHead>
+                            <TableHead>Size</TableHead>
+                            <TableHead>Valid Header</TableHead>
+                            <TableHead>Thumbnails</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {bbAnalysis.thumbsFiles.map((t) => (
+                            <TableRow key={t.filename} className="border-white/5 hover:bg-white/5">
+                              <TableCell className="font-mono text-xs text-white">{t.filename}</TableCell>
+                              <TableCell className="text-xs text-muted-foreground">{formatSize(t.size)}</TableCell>
+                              <TableCell>
+                                <Badge variant="outline" className={`text-[10px] border-0 ${t.valid ? "bg-green-500/20 text-green-300" : "bg-red-500/20 text-red-300"}`}>
+                                  {t.valid ? "0x24052003" : "Invalid"}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-xs text-teal-300">{t.thumbnailCount}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {bbAnalysis.eventLogs && bbAnalysis.eventLogs.length > 0 && (
+                  <Card className="border-white/10 glass-panel" data-testid="card-event-logs">
+                    <CardHeader className="pb-3 border-b border-white/5">
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <Activity className="w-4 h-4 text-orange-400" />
+                        Event Logs ({bbAnalysis.eventLogs.length})
+                      </CardTitle>
+                      <CardDescription className="text-xs">Volatile system logs containing call history, Bluetooth pairing, app activity, and synchronization events.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                      <Table>
+                        <TableHeader className="bg-black/20">
+                          <TableRow className="border-white/5">
+                            <TableHead>Log File</TableHead>
+                            <TableHead>Path</TableHead>
+                            <TableHead>Size</TableHead>
+                            <TableHead>Entries</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {bbAnalysis.eventLogs.map((log) => (
+                            <TableRow key={log.filename} className="border-white/5 hover:bg-white/5">
+                              <TableCell className="font-mono text-xs text-white">{log.filename}</TableCell>
+                              <TableCell className="font-mono text-[11px] text-muted-foreground truncate max-w-[300px]">{log.path}</TableCell>
+                              <TableCell className="text-xs text-muted-foreground">{formatSize(log.size)}</TableCell>
+                              <TableCell className="text-xs text-orange-300">{log.entries}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {bbAnalysis.dateArtifacts && bbAnalysis.dateArtifacts.length > 0 && (
+                  <Card className="border-white/10 glass-panel" data-testid="card-date-artifacts">
+                    <CardHeader className="pb-3 border-b border-white/5">
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <Calendar className="w-4 h-4 text-indigo-400" />
+                        Date/Time Artifacts ({bbAnalysis.dateArtifacts.length})
+                      </CardTitle>
+                      <CardDescription className="text-xs">Decoded timestamps: Java epoch (ms since 1970), Calendar (minutes since 1900), Unix epoch, BB10 13-digit timestamps</CardDescription>
+                    </CardHeader>
+                    <CardContent className="p-0 max-h-80 overflow-y-auto">
+                      <Table>
+                        <TableHeader className="bg-black/20 sticky top-0">
+                          <TableRow className="border-white/5">
+                            <TableHead>Source</TableHead>
+                            <TableHead>Format</TableHead>
+                            <TableHead>Raw Value</TableHead>
+                            <TableHead>Decoded</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {bbAnalysis.dateArtifacts.map((da, idx) => (
+                            <TableRow key={idx} className="border-white/5 hover:bg-white/5">
+                              <TableCell className="font-mono text-[11px] text-muted-foreground truncate max-w-[200px]">{da.source}</TableCell>
+                              <TableCell>
+                                <Badge variant="outline" className={`text-[10px] border-0 ${
+                                  da.format === "java_epoch" ? "bg-indigo-500/20 text-indigo-300" :
+                                  da.format === "unix_epoch" ? "bg-blue-500/20 text-blue-300" :
+                                  da.format === "calendar_minutes" ? "bg-purple-500/20 text-purple-300" :
+                                  "bg-white/5 text-muted-foreground"
+                                }`}>
+                                  {da.format.replace(/_/g, " ")}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="font-mono text-[11px] text-white/60">{da.rawValue}</TableCell>
+                              <TableCell className="font-mono text-xs text-indigo-300">{da.decoded}</TableCell>
                             </TableRow>
                           ))}
                         </TableBody>

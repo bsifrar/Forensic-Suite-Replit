@@ -26,19 +26,26 @@ JuiceSuite is a browser-based forensic analysis dashboard that merges MediaScann
   - iOS MobileSync + BlackBerry backup detection
   - Report generation (archiver → downloadable ZIP)
 - **BlackBerry Forensics** (`server/bbAnalyzer.ts`):
-  - Deep analysis of .rem, .key, .cod, .dat, .mkf files
-  - Hex dump generation for key and data files
-  - Encryption detection via entropy analysis
-  - Multi-method decryption (XOR, AES-128-CBC, 3DES-CBC)
+  - Backup format detection: IPD, BBBv1 (Mac), BBBv2 (Windows), BB10 BBB, BB10 TAR (QNX/PER headers)
+  - Deep analysis of .rem, .key, .cod, .dat, .mkf, .ipd, .bbb files
+  - REMF header detection (0x52454D46) for encrypted REM files
+  - BBThumbs.dat parsing (magic: 0x24052003) with embedded JPEG thumbnail counting
+  - Hex dump generation with ASCII column for key and data files
+  - Encryption detection via entropy analysis (>7.0 = encrypted)
+  - Multi-method decryption (XOR, AES-128-CBC, 3DES-CBC) with REMF header stripping
+  - BB10 forensic artifact path detection (PIM, SMS, BBM, Hub, Browser, Camera, etc.)
+  - Date/time artifact decoding: Java epoch (ms since 1970), Calendar (minutes since 1900), Unix 10/13-digit timestamps
+  - Event log detection and entry counting
   - Contact/message/media signature counting
   - SQLite signature detection within encrypted databases
+  - Reference: NIST Punja 2014 BB forensics guide
 
 ### Key Directories
 - `uploads/` - Uploaded files organized by workspace
 - `output/` - Carved files and generated reports
 - `client/src/pages/` - MediaScanner.tsx, ArtifactAnalyzer.tsx
 - `client/src/components/layout/` - DashboardLayout.tsx (sidebar nav)
-- `client/src/components/shared/` - JobQueue, LogsPanel, ReportDialog
+- `client/src/components/shared/` - JobQueue, LogsPanel, ReportDialog, DropZone
 - `server/processors.ts` - All server-side processing logic
 - `server/bbAnalyzer.ts` - BlackBerry backup forensic analysis
 - `server/routes.ts` - API routes with WebSocket broadcasting
