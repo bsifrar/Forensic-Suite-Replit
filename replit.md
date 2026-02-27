@@ -9,7 +9,7 @@ JuiceSuite is a browser-based forensic analysis dashboard that merges MediaScann
 - **Framework**: React 19, Vite, wouter routing, TanStack Query
 - **Styling**: Tailwind CSS v4, Apple-inspired dark UI
 - **State**: Context-based store with WebSocket for real-time updates
-- **Pages**: `/media-scanner`, `/artifact-analyzer`
+- **Pages**: `/media-scanner`, `/artifact-analyzer`, `/settings`
 
 ### Backend (Express + Node.js)
 - **Server**: Express 5 with HTTP + WebSocket (ws)
@@ -17,6 +17,8 @@ JuiceSuite is a browser-based forensic analysis dashboard that merges MediaScann
 - **File Upload**: multer with 2GB limit
 - **Processing Modules** (`server/processors.ts`):
   - Media scanning with hash-based classification (Safe/Suggestive/Sexy/Explicit)
+  - NSFW reason tags (nudity, lingerie, swimwear, suggestive_pose, skin_exposure, intimate_setting)
+  - Confidence scores (70-100%) per media item
   - Keyword search (text + hex patterns)
   - SQLite explorer (better-sqlite3)
   - Plist parser (plist npm)
@@ -24,7 +26,7 @@ JuiceSuite is a browser-based forensic analysis dashboard that merges MediaScann
   - JPG/PNG file carving from raw data
   - Recursive ZIP extraction
   - iOS MobileSync + BlackBerry backup detection
-  - Report generation (archiver → downloadable ZIP)
+  - Report generation (archiver → downloadable ZIP) with optional BB forensics section
 - **BlackBerry Forensics** (`server/bbAnalyzer.ts`):
   - Backup format detection: IPD, BBBv1 (Mac), BBBv2 (Windows), BB10 BBB, BB10 TAR (QNX/PER headers)
   - Deep analysis of .rem, .key, .cod, .dat, .mkf, .ipd, .bbb files
@@ -43,9 +45,9 @@ JuiceSuite is a browser-based forensic analysis dashboard that merges MediaScann
 ### Key Directories
 - `uploads/` - Uploaded files organized by workspace
 - `output/` - Carved files and generated reports
-- `client/src/pages/` - MediaScanner.tsx, ArtifactAnalyzer.tsx
+- `client/src/pages/` - MediaScanner.tsx, ArtifactAnalyzer.tsx, Settings.tsx
 - `client/src/components/layout/` - DashboardLayout.tsx (sidebar nav)
-- `client/src/components/shared/` - JobQueue, LogsPanel, ReportDialog, DropZone
+- `client/src/components/shared/` - JobQueue, LogsPanel, ReportDialog, DropZone, MediaDetailModal
 - `server/processors.ts` - All server-side processing logic
 - `server/bbAnalyzer.ts` - BlackBerry backup forensic analysis
 - `server/routes.ts` - API routes with WebSocket broadcasting
@@ -56,6 +58,8 @@ JuiceSuite is a browser-based forensic analysis dashboard that merges MediaScann
 - `GET /api/media/stats` - Classification counts
 - `GET /api/media/file/:id` - Serve uploaded media file as thumbnail
 - `GET /api/media/export` - CSV export
+- `GET /api/media/duplicates` - Get duplicate file groups by SHA-256 hash
+- `POST /api/media/duplicates/remove` - Remove duplicate files (keeps one copy)
 - `POST /api/search` - Keyword/hex search
 - `POST /api/sqlite/explore` - Upload & explore SQLite DB
 - `GET /api/sqlite/tables` / `GET /api/sqlite/rows/:table`
@@ -77,6 +81,18 @@ Real-time progress updates broadcast to all clients:
 - `sqlite_ready`, `plist_ready`, `strings_ready`, `carve_complete`
 - `archive_extracted`, `backups_detected`, `report_ready`
 - `bb_analysis_complete`, `bb_decrypt_complete`
+
+### Feature Set (MediaScannerPro parity)
+- NSFW reason tags per media item (nudity, lingerie, swimwear, etc.)
+- Confidence scores (percentage) for classification
+- Duplicate media detection with grouping, wasted space calculation, and removal
+- Media detail modal with full-size preview, metadata, navigation
+- Grid/List view toggle for media results
+- Sort by name, size, category
+- Filter by file type (images/videos)
+- Category distribution bar chart (color-coded)
+- Settings page (hash algorithm, scan settings, export format, UI preferences)
+- BB forensics data included in report generation
 
 ### Dependencies (notable server-side)
 - `multer` - File uploads
