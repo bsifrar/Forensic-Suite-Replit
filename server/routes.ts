@@ -21,7 +21,7 @@ import {
 } from "./processors";
 import { analyzeBBBackup, decryptRemFile, type BBAnalysisResult } from "./bbAnalyzer";
 
-let bbAnalysisResults: Map<string, BBAnalysisResult & { dirPath: string }> = new Map();
+export let bbAnalysisResults: Map<string, BBAnalysisResult & { dirPath: string }> = new Map();
 
 const upload = multer({
   dest: path.join(getUploadDir(), "tmp"),
@@ -500,6 +500,49 @@ export async function registerRoutes(
     storage.addLog("info", `Decryption attempted on ${results.length} .rem files`, "BBAnalyzer");
     broadcast("bb_decrypt_complete", { sessionId: req.params.sessionId, results });
     res.json(results);
+  });
+
+  app.get("/api/media/duplicates", (_req, res) => {
+    const all = storage.getScannedMedia();
+    const hashGroups: Record<string, typeof all> = {};
+    for (const m of all) {
+      if (m.hash) {
+        if (!hashGroups[m.hash]) hashGroups[m.hash] = [];
+        hashGroups[m.hash].push(m);
+      }
+    }
+    const duplicates = Object.entries(hashGroups)
+      .filter(([, items]) => items.length > 1)
+      .map(([hash, items]) => ({
+        hash,
+        count: items.length,
+        wastedBytes: items.slice(1).reduce((sum, m) => sum + m.size, 0),
+        files: items,
+      }));
+    res.json({ groups: duplicates, totalDuplicates: duplicates.reduce((s, d) => s + d.count - 1, 0), totalWasted: duplicates.reduce((s, d) => s + d.wastedBytes, 0) });
+  });
+
+  app.post("/api/media/duplicates/remove", (_req, res) => {
+    const all = storage.getScannedMedia();
+    const hashGroups: Record<string, typeof all> = {};
+    for (const m of all) {
+      if (m.hash) {
+        if (!hashGroups[m.hash]) hashGroups[m.hash] = [];
+        hashGroups[m.hash].push(m);
+      }
+    }
+    let removed = 0;
+    for (const [, items] of Object.entries(hashGroups)) {
+      if (items.length > 1) {
+        for (let i = 1; i < items.length; i++) {
+          storage.removeScannedMedia(items[i].id);
+          removed++;
+        }
+      }
+    }
+    storage.addLog("info", `Removed ${removed} duplicate media files`, "MediaScanner");
+    broadcast("scan_complete", { media: storage.getScannedMedia() });
+    res.json({ removed });
   });
 
   // --- Media File Export ---

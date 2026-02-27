@@ -71,10 +71,10 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               <FileText className="w-4 h-4 mr-3" />
               Generate Report
             </Button>
-            <Button variant="ghost" className="justify-start text-muted-foreground hover:text-white w-full">
-              <Settings className="w-4 h-4 mr-3" />
+            <Link href="/settings" className="flex items-center gap-3 px-4 py-2 rounded-md text-sm font-medium text-muted-foreground hover:bg-white/5 hover:text-white transition-all duration-200">
+              <Settings className="w-4 h-4" />
               Settings
-            </Button>
+            </Link>
           </nav>
         </div>
 

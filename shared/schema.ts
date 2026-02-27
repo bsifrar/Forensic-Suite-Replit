@@ -37,6 +37,8 @@ export interface ScannedMedia {
   width?: number;
   height?: number;
   hash?: string;
+  reasonTags?: string[];
+  confidence?: number;
 }
 
 export interface KeywordHit {
@@ -106,6 +108,7 @@ export const reportSchema = z.object({
   includeMedia: z.boolean().default(true),
   includeSqlite: z.boolean().default(true),
   includeLogs: z.boolean().default(false),
+  includeBB: z.boolean().default(false),
 });
 
 export type User = { id: string; username: string; password: string };

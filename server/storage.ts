@@ -14,6 +14,7 @@ export interface IStorage {
 
   addScannedMedia(media: Omit<ScannedMedia, "id">): ScannedMedia;
   getScannedMedia(category?: string): ScannedMedia[];
+  removeScannedMedia(id: string): boolean;
   clearScannedMedia(): void;
 
   addKeywordHit(hit: Omit<KeywordHit, "id">): KeywordHit;
@@ -113,6 +114,10 @@ export class MemStorage implements IStorage {
     const all = Array.from(this.scannedMedia.values());
     if (!category || category === "all") return all;
     return all.filter((m) => m.category === category);
+  }
+
+  removeScannedMedia(id: string): boolean {
+    return this.scannedMedia.delete(id);
   }
 
   clearScannedMedia(): void {

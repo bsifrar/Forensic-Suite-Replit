@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import DropZone from "@/components/shared/DropZone";
+import MediaDetailModal from "@/components/shared/MediaDetailModal";
 
 interface MediaItem {
   id: string;
@@ -15,6 +16,8 @@ interface MediaItem {
   mimeType: string;
   category: string;
   hash?: string;
+  reasonTags?: string[];
+  confidence?: number;
 }
 
 interface Stats {
@@ -30,8 +33,25 @@ export default function MediaScanner() {
   const [activeTab, setActiveTab] = useState("all");
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [stats, setStats] = useState<Stats>({ total: 0, safe: 0, suggestive: 0, sexy: 0, explicit: 0 });
+  const [scanTime, setScanTime] = useState<number | null>(null);
+  const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null);
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handlePrevMedia = () => {
+    if (!selectedMedia) return;
+    const index = media.findIndex(m => m.id === selectedMedia.id);
+    if (index > 0) setSelectedMedia(media[index - 1]);
+    else setSelectedMedia(media[media.length - 1]);
+  };
+
+  const handleNextMedia = () => {
+    if (!selectedMedia) return;
+    const index = media.findIndex(m => m.id === selectedMedia.id);
+    if (index < media.length - 1) setSelectedMedia(media[index + 1]);
+    else setSelectedMedia(media[0]);
+  };
 
   const fetchMedia = useCallback(async (category?: string) => {
     try {
@@ -70,7 +90,10 @@ export default function MediaScanner() {
     formData.append("workspace", "media_scanner");
 
     try {
+      const startTime = Date.now();
       await fetch("/api/upload", { method: "POST", body: formData });
+      const duration = (Date.now() - startTime) / 1000;
+      setScanTime(duration);
     } catch {}
     setIsUploading(false);
   };
@@ -82,7 +105,10 @@ export default function MediaScanner() {
     for (const f of files) formData.append("files", f);
     formData.append("workspace", "media_scanner");
     try {
+      const startTime = Date.now();
       await fetch("/api/upload", { method: "POST", body: formData });
+      const duration = (Date.now() - startTime) / 1000;
+      setScanTime(duration);
     } catch {}
     setIsUploading(false);
   };
@@ -148,7 +174,39 @@ export default function MediaScanner() {
       )}
 
       {hasScanned && (
-        <div className="grid grid-cols-5 gap-4">
+        <div className="space-y-4">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Category Distribution</span>
+            <span className="text-white/60">
+              {stats.total} files scanned {scanTime ? `in ${scanTime.toFixed(1)}s` : ""}
+            </span>
+          </div>
+          <div className="h-4 w-full flex rounded-full overflow-hidden bg-white/5 border border-white/10">
+            {categories.filter(c => c.id !== 'all').map(cat => {
+              const percentage = stats.total > 0 ? (stats[cat.id as keyof Stats] / stats.total) * 100 : 0;
+              if (percentage === 0) return null;
+              
+              const colorClass = 
+                cat.id === 'safe' ? 'bg-green-500' :
+                cat.id === 'suggestive' ? 'bg-yellow-500' :
+                cat.id === 'sexy' ? 'bg-orange-500' :
+                cat.id === 'explicit' ? 'bg-red-500' : 'bg-gray-500';
+
+              return (
+                <div 
+                  key={cat.id}
+                  style={{ width: `${percentage}%` }}
+                  className={`${colorClass} h-full transition-all duration-500 relative group`}
+                  title={`${cat.label}: ${percentage.toFixed(1)}%`}
+                >
+                  <span className="absolute inset-0 flex items-center justify-center text-[8px] font-bold text-black opacity-0 group-hover:opacity-100 transition-opacity">
+                    {percentage.toFixed(0)}%
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          <div className="grid grid-cols-5 gap-4">
           {categories.map(cat => (
             <Card key={cat.id} data-testid={`card-stat-${cat.id}`} className="border-white/10 glass-panel cursor-pointer hover:border-blue-500/30 transition-colors" onClick={() => setActiveTab(cat.id)}>
               <CardContent className="p-4 flex items-center justify-between">
@@ -165,6 +223,7 @@ export default function MediaScanner() {
             </Card>
           ))}
         </div>
+      </div>
       )}
 
       {hasScanned && (
@@ -190,7 +249,15 @@ export default function MediaScanner() {
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 pb-10">
                 {media.map((item) => (
-                  <div key={item.id} data-testid={`card-media-${item.id}`} className="group relative aspect-square rounded-lg overflow-hidden bg-white/5 border border-white/10 hover:border-blue-500/50 transition-colors">
+                  <div 
+                    key={item.id} 
+                    data-testid={`card-media-${item.id}`} 
+                    className="group relative aspect-square rounded-lg overflow-hidden bg-white/5 border border-white/10 hover:border-blue-500/50 transition-colors cursor-pointer"
+                    onClick={() => {
+                      setSelectedMedia(item);
+                      setIsDetailOpen(true);
+                    }}
+                  >
                     {item.mimeType.startsWith("image/") ? (
                       <img
                         src={`/api/media/file/${item.id}`}
@@ -205,6 +272,18 @@ export default function MediaScanner() {
                     ) : null}
                     <div className={`absolute inset-0 flex items-center justify-center ${item.mimeType.startsWith("image/") ? "hidden" : ""} opacity-30 group-hover:opacity-100 transition-opacity`}>
                       <ImageIcon className="w-8 h-8 text-white/50" />
+                    </div>
+                    <div className="absolute top-2 left-2 flex flex-col gap-1 z-10">
+                      {item.reasonTags?.map((tag, idx) => (
+                        <Badge key={idx} variant="secondary" className="bg-black/60 text-white border-white/20 text-[8px] py-0 px-1 backdrop-blur-sm">
+                          {tag}
+                        </Badge>
+                      ))}
+                      {item.confidence !== undefined && (
+                        <Badge variant="outline" className="bg-blue-600/40 text-blue-100 border-blue-400/30 text-[8px] py-0 px-1 backdrop-blur-sm">
+                          {item.confidence}%
+                        </Badge>
+                      )}
                     </div>
                     <div className="absolute bottom-0 inset-x-0 p-2 bg-gradient-to-t from-black/80 to-transparent flex items-center justify-between">
                       <span className="text-[10px] font-mono text-white/70 truncate max-w-[80px]" title={item.filename}>{item.filename}</span>
@@ -224,6 +303,14 @@ export default function MediaScanner() {
           </TabsContent>
         </Tabs>
       )}
+
+      <MediaDetailModal
+        isOpen={isDetailOpen}
+        onClose={() => setIsDetailOpen(false)}
+        item={selectedMedia}
+        onPrev={handlePrevMedia}
+        onNext={handleNextMedia}
+      />
     </div>
   );
 }

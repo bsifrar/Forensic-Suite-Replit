@@ -8,6 +8,7 @@ import { AppProvider } from "@/lib/store";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import MediaScanner from "@/pages/MediaScanner";
 import ArtifactAnalyzer from "@/pages/ArtifactAnalyzer";
+import Settings from "@/pages/Settings";
 
 function Router() {
   return (
@@ -15,6 +16,7 @@ function Router() {
       <Route path="/" component={MediaScanner} />
       <Route path="/media-scanner" component={MediaScanner} />
       <Route path="/artifact-analyzer" component={ArtifactAnalyzer} />
+      <Route path="/settings" component={Settings} />
       <Route component={NotFound} />
     </Switch>
   );

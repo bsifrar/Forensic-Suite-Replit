@@ -21,6 +21,7 @@ export default function ReportDialog({ open, onOpenChange }: ReportDialogProps) 
   const [includeMedia, setIncludeMedia] = useState(true);
   const [includeSqlite, setIncludeSqlite] = useState(true);
   const [includeLogs, setIncludeLogs] = useState(false);
+  const [includeBB, setIncludeBB] = useState(false);
 
   const handleGenerate = async () => {
     setIsGenerating(true);
@@ -28,7 +29,7 @@ export default function ReportDialog({ open, onOpenChange }: ReportDialogProps) 
       await fetch("/api/report", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ caseNumber, investigator, includeSummary, includeMedia, includeSqlite, includeLogs }),
+        body: JSON.stringify({ caseNumber, investigator, includeSummary, includeMedia, includeSqlite, includeLogs, includeBB }),
       });
       onOpenChange(false);
     } catch {}
@@ -81,6 +82,10 @@ export default function ReportDialog({ open, onOpenChange }: ReportDialogProps) 
               <label className="flex items-center space-x-3 cursor-pointer group">
                 <Checkbox checked={includeLogs} onCheckedChange={(c) => setIncludeLogs(!!c)} className="border-white/20 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600" />
                 <span className="text-sm font-medium leading-none text-white/70 group-hover:text-white transition-colors">System Analysis Logs</span>
+              </label>
+              <label className="flex items-center space-x-3 cursor-pointer group">
+                <Checkbox checked={includeBB} onCheckedChange={(c) => setIncludeBB(!!c)} className="border-white/20 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600" />
+                <span className="text-sm font-medium leading-none text-white/70 group-hover:text-white transition-colors">BlackBerry Forensics (REM, Key, Logs)</span>
               </label>
             </div>
           </div>
