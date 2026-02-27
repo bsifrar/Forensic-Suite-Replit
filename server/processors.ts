@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import { storage } from "./storage";
-import type { MediaCategory, ScannedMedia, ExtractedString, CarvedFile } from "@shared/schema";
+import type { MediaCategory, ScannedMedia, ExtractedString, CarvedFile, AppSettings } from "@shared/schema";
 import { bbAnalysisResults } from "./routes";
 import { type BBAnalysisResult } from "./bbAnalyzer";
 
@@ -22,6 +22,18 @@ export function getOutputDir() { return OUTPUT_DIR; }
 
 const IMAGE_EXTS = new Set([".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tiff", ".tif", ".heic", ".heif", ".svg"]);
 const VIDEO_EXTS = new Set([".mp4", ".avi", ".mov", ".mkv", ".wmv", ".flv", ".webm", ".m4v", ".3gp"]);
+const GIF_EXTS = new Set([".gif"]);
+
+const MAX_FILE_SIZE_SYNC = 512 * 1024 * 1024;
+
+function checkFileSize(filePath: string): { ok: boolean; size: number } {
+  try {
+    const stat = fs.statSync(filePath);
+    return { ok: stat.size <= MAX_FILE_SIZE_SYNC, size: stat.size };
+  } catch {
+    return { ok: false, size: 0 };
+  }
+}
 
 function classifyByName(filename: string): { category: MediaCategory; reasonTags: string[]; confidence: number } {
   const lower = filename.toLowerCase();
@@ -60,45 +72,54 @@ function getMimeType(ext: string): string {
   return map[ext.toLowerCase()] || "application/octet-stream";
 }
 
+function hashFileStreaming(filePath: string, algorithm: string): string {
+  const CHUNK_SIZE = 8 * 1024 * 1024;
+  const hash = crypto.createHash(algorithm);
+  const fd = fs.openSync(filePath, "r");
+  const buf = Buffer.alloc(CHUNK_SIZE);
+  let bytesRead: number;
+  while ((bytesRead = fs.readSync(fd, buf, 0, CHUNK_SIZE, null)) > 0) {
+    hash.update(buf.subarray(0, bytesRead));
+  }
+  fs.closeSync(fd);
+  return hash.digest("hex");
+}
+
 export async function scanMediaFiles(
   dirPath: string,
-  onProgress: (pct: number, msg: string) => void
+  onProgress: (pct: number, msg: string) => void,
+  onFileProgress?: (data: { currentFile: string; fileIndex: number; totalFiles: number }) => void
 ): Promise<ScannedMedia[]> {
   storage.clearScannedMedia();
+  const settings = storage.getSettings();
   const files = collectFiles(dirPath);
   const mediaFiles = files.filter(f => {
     const ext = path.extname(f).toLowerCase();
+    if (!settings.includeGifs && GIF_EXTS.has(ext)) return false;
+    if (!settings.includeVideos && VIDEO_EXTS.has(ext)) return false;
     return IMAGE_EXTS.has(ext) || VIDEO_EXTS.has(ext);
   });
 
-  if (mediaFiles.length === 0) {
-    const allFiles = files;
-    for (let i = 0; i < allFiles.length; i++) {
-      const f = allFiles[i];
-      const ext = path.extname(f).toLowerCase();
-      const stat = fs.statSync(f);
-      const { category, reasonTags, confidence } = classifyByName(path.basename(f));
-      const media = storage.addScannedMedia({
-        filename: path.basename(f),
-        path: f,
-        size: stat.size,
-        mimeType: getMimeType(ext),
-        category,
-        reasonTags,
-        confidence,
-        hash: crypto.createHash("sha256").update(fs.readFileSync(f)).digest("hex").substring(0, 16),
-      });
-      onProgress(Math.round(((i + 1) / allFiles.length) * 100), `Scanned: ${media.filename}`);
-    }
-    return storage.getScannedMedia();
-  }
+  const filesToScan = mediaFiles.length > 0 ? mediaFiles : files;
 
-  for (let i = 0; i < mediaFiles.length; i++) {
-    const f = mediaFiles[i];
+  for (let i = 0; i < filesToScan.length; i++) {
+    const f = filesToScan[i];
     const ext = path.extname(f).toLowerCase();
     const stat = fs.statSync(f);
     const { category, reasonTags, confidence } = classifyByName(path.basename(f));
-    const media = storage.addScannedMedia({
+
+    if (onFileProgress) {
+      onFileProgress({ currentFile: path.basename(f), fileIndex: i, totalFiles: filesToScan.length });
+    }
+
+    let fileHash: string;
+    if (stat.size > MAX_FILE_SIZE_SYNC) {
+      fileHash = hashFileStreaming(f, settings.hashAlgorithm);
+    } else {
+      fileHash = crypto.createHash(settings.hashAlgorithm).update(fs.readFileSync(f)).digest("hex");
+    }
+
+    storage.addScannedMedia({
       filename: path.basename(f),
       path: f,
       size: stat.size,
@@ -106,9 +127,9 @@ export async function scanMediaFiles(
       category,
       reasonTags,
       confidence,
-      hash: crypto.createHash("sha256").update(fs.readFileSync(f)).digest("hex").substring(0, 16),
+      hash: fileHash,
     });
-    onProgress(Math.round(((i + 1) / mediaFiles.length) * 100), `Classified: ${media.filename} -> ${category}`);
+    onProgress(Math.round(((i + 1) / filesToScan.length) * 100), `Classified: ${path.basename(f)} -> ${category}`);
   }
 
   return storage.getScannedMedia();
@@ -134,6 +155,20 @@ export async function keywordSearch(
   for (let i = 0; i < files.length; i++) {
     const f = files[i];
     try {
+      const { ok, size } = checkFileSize(f);
+      if (!ok) {
+        if (matchType === "hex" && searchBuf) {
+          const chunkHits = await searchFileStreamingHex(f, searchBuf, dirPath, query, size);
+          hits.push(...chunkHits.map(h => storage.addKeywordHit(h)));
+        } else {
+          const chunkHits = await searchFileStreamingText(f, query, caseSensitive, dirPath, size);
+          hits.push(...chunkHits.map(h => storage.addKeywordHit(h)));
+        }
+        if (hits.length > 500) break;
+        onProgress(Math.round(((i + 1) / files.length) * 100), `Searching: ${path.basename(f)}`);
+        continue;
+      }
+
       const content = fs.readFileSync(f);
 
       if (matchType === "hex" && searchBuf) {
@@ -178,8 +213,74 @@ export async function keywordSearch(
       }
     } catch {}
     onProgress(Math.round(((i + 1) / files.length) * 100), `Searching: ${path.basename(f)}`);
+    if (hits.length > 500) break;
   }
 
+  return hits;
+}
+
+async function searchFileStreamingHex(filePath: string, searchBuf: Buffer, dirPath: string, query: string, fileSize: number) {
+  const CHUNK_SIZE = 16 * 1024 * 1024;
+  const overlap = searchBuf.length - 1;
+  const hits: Omit<import("@shared/schema").KeywordHit, "id">[] = [];
+  const fd = fs.openSync(filePath, "r");
+  const buf = Buffer.alloc(CHUNK_SIZE + overlap);
+  let globalOffset = 0;
+  let carry = 0;
+
+  while (globalOffset < fileSize && hits.length < 50) {
+    const readStart = Math.max(0, globalOffset - carry);
+    const bytesRead = fs.readSync(fd, buf, 0, CHUNK_SIZE + overlap, readStart);
+    if (bytesRead === 0) break;
+    const chunk = buf.subarray(0, bytesRead);
+    let pos = carry;
+    while (pos < chunk.length - searchBuf.length + 1 && hits.length < 50) {
+      const idx = chunk.indexOf(searchBuf, pos);
+      if (idx === -1) break;
+      const absOffset = readStart + idx;
+      const ctxStart = Math.max(0, idx - 16);
+      const ctxEnd = Math.min(chunk.length, idx + searchBuf.length + 16);
+      const contextHex = chunk.subarray(ctxStart, ctxEnd).toString("hex").match(/.{1,2}/g)?.join(" ") || "";
+      hits.push({ file: path.relative(dirPath, filePath), offset: absOffset, context: contextHex, matchType: "hex", query });
+      pos = idx + 1;
+    }
+    globalOffset = readStart + bytesRead - overlap;
+    carry = overlap;
+  }
+  fs.closeSync(fd);
+  return hits;
+}
+
+async function searchFileStreamingText(filePath: string, query: string, caseSensitive: boolean, dirPath: string, fileSize: number) {
+  const CHUNK_SIZE = 16 * 1024 * 1024;
+  const hits: Omit<import("@shared/schema").KeywordHit, "id">[] = [];
+  const fd = fs.openSync(filePath, "r");
+  const buf = Buffer.alloc(CHUNK_SIZE + query.length);
+  let globalOffset = 0;
+  const overlap = query.length - 1;
+  let carry = 0;
+
+  while (globalOffset < fileSize && hits.length < 50) {
+    const readStart = Math.max(0, globalOffset - carry);
+    const bytesRead = fs.readSync(fd, buf, 0, CHUNK_SIZE + overlap, readStart);
+    if (bytesRead === 0) break;
+    const text = buf.subarray(0, bytesRead).toString("utf-8");
+    const searchStr = caseSensitive ? query : query.toLowerCase();
+    const searchText = caseSensitive ? text : text.toLowerCase();
+    let pos = carry;
+    while (pos < text.length && hits.length < 50) {
+      const idx = searchText.indexOf(searchStr, pos);
+      if (idx === -1) break;
+      const lineStart = text.lastIndexOf("\n", idx) + 1;
+      const lineEnd = text.indexOf("\n", idx);
+      const context = text.substring(lineStart, lineEnd === -1 ? text.length : lineEnd).substring(0, 200);
+      hits.push({ file: path.relative(dirPath, filePath), offset: readStart + idx, context, matchType: "text", query });
+      pos = idx + 1;
+    }
+    globalOffset = readStart + bytesRead - overlap;
+    carry = overlap;
+  }
+  fs.closeSync(fd);
   return hits;
 }
 
@@ -236,32 +337,66 @@ export async function extractStrings(
   minLength: number,
   onProgress: (pct: number, msg: string) => void
 ): Promise<ExtractedString[]> {
-  const content = fs.readFileSync(filePath);
+  const { ok, size } = checkFileSize(filePath);
   const results: ExtractedString[] = [];
 
   onProgress(10, "Scanning for ASCII strings");
 
-  let current = "";
-  let startOffset = 0;
+  if (!ok) {
+    const CHUNK_SIZE = 16 * 1024 * 1024;
+    const fd = fs.openSync(filePath, "r");
+    const buf = Buffer.alloc(CHUNK_SIZE);
+    let globalOffset = 0;
+    let current = "";
+    let startOffset = 0;
 
-  for (let i = 0; i < content.length; i++) {
-    const byte = content[i];
-    if (byte >= 32 && byte < 127) {
-      if (current.length === 0) startOffset = i;
-      current += String.fromCharCode(byte);
-    } else {
-      if (current.length >= minLength) {
-        results.push({ offset: startOffset, value: current.substring(0, 500), encoding: "ascii" });
+    while (globalOffset < size && results.length < 5000) {
+      const bytesRead = fs.readSync(fd, buf, 0, CHUNK_SIZE, globalOffset);
+      if (bytesRead === 0) break;
+      for (let i = 0; i < bytesRead; i++) {
+        const byte = buf[i];
+        if (byte >= 32 && byte < 127) {
+          if (current.length === 0) startOffset = globalOffset + i;
+          current += String.fromCharCode(byte);
+        } else {
+          if (current.length >= minLength) {
+            results.push({ offset: startOffset, value: current.substring(0, 500), encoding: "ascii" });
+          }
+          current = "";
+        }
+        if (results.length >= 5000) break;
       }
-      current = "";
+      globalOffset += bytesRead;
+      onProgress(10 + Math.round((globalOffset / size) * 80), `Offset 0x${globalOffset.toString(16)}`);
     }
-    if (results.length > 5000) break;
-    if (i % 100000 === 0) {
-      onProgress(10 + Math.round((i / content.length) * 80), `Offset ${i.toString(16)}`);
+    if (current.length >= minLength && results.length < 5000) {
+      results.push({ offset: startOffset, value: current.substring(0, 500), encoding: "ascii" });
     }
-  }
-  if (current.length >= minLength) {
-    results.push({ offset: startOffset, value: current.substring(0, 500), encoding: "ascii" });
+    fs.closeSync(fd);
+  } else {
+    const content = fs.readFileSync(filePath);
+    let current = "";
+    let startOffset = 0;
+
+    for (let i = 0; i < content.length; i++) {
+      const byte = content[i];
+      if (byte >= 32 && byte < 127) {
+        if (current.length === 0) startOffset = i;
+        current += String.fromCharCode(byte);
+      } else {
+        if (current.length >= minLength) {
+          results.push({ offset: startOffset, value: current.substring(0, 500), encoding: "ascii" });
+        }
+        current = "";
+      }
+      if (results.length > 5000) break;
+      if (i % 100000 === 0) {
+        onProgress(10 + Math.round((i / content.length) * 80), `Offset ${i.toString(16)}`);
+      }
+    }
+    if (current.length >= minLength) {
+      results.push({ offset: startOffset, value: current.substring(0, 500), encoding: "ascii" });
+    }
   }
 
   storage.setExtractedStrings(results);
@@ -273,9 +408,19 @@ export async function carveMedia(
   filePath: string,
   onProgress: (pct: number, msg: string) => void
 ): Promise<CarvedFile[]> {
-  const content = fs.readFileSync(filePath);
+  const { ok, size } = checkFileSize(filePath);
   const results: CarvedFile[] = [];
   const outDir = path.join(OUTPUT_DIR, "carved");
+
+  if (!ok) {
+    onProgress(5, `Large file (${(size / 1024 / 1024).toFixed(0)}MB) — streaming carve`);
+    const carved = await carveMediaStreaming(filePath, size, outDir, onProgress);
+    results.push(...carved);
+    onProgress(100, `Carved ${results.length} files`);
+    return results;
+  }
+
+  const content = fs.readFileSync(filePath);
 
   const JPG_HEADER = Buffer.from([0xFF, 0xD8, 0xFF]);
   const JPG_FOOTER = Buffer.from([0xFF, 0xD9]);
@@ -290,16 +435,11 @@ export async function carveMedia(
       let end = content.indexOf(JPG_FOOTER, offset + 3);
       if (end !== -1) {
         end += 2;
-        const size = end - offset;
-        if (size > 100 && size < 50 * 1024 * 1024) {
+        const sz = end - offset;
+        if (sz > 100 && sz < 50 * 1024 * 1024) {
           const fname = `carved_${offset.toString(16)}.jpg`;
           fs.writeFileSync(path.join(outDir, fname), content.slice(offset, end));
-          results.push(storage.addCarvedFile({
-            type: "jpg",
-            offset,
-            size,
-            filename: fname,
-          }));
+          results.push(storage.addCarvedFile({ type: "jpg", offset, size: sz, filename: fname }));
         }
         offset = end;
       } else {
@@ -323,16 +463,11 @@ export async function carveMedia(
     const end = content.indexOf(PNG_FOOTER, match + 8);
     if (end !== -1) {
       const fullEnd = end + 8;
-      const size = fullEnd - match;
-      if (size > 100 && size < 50 * 1024 * 1024) {
+      const sz = fullEnd - match;
+      if (sz > 100 && sz < 50 * 1024 * 1024) {
         const fname = `carved_${match.toString(16)}.png`;
         fs.writeFileSync(path.join(outDir, fname), content.slice(match, fullEnd));
-        results.push(storage.addCarvedFile({
-          type: "png",
-          offset: match,
-          size,
-          filename: fname,
-        }));
+        results.push(storage.addCarvedFile({ type: "png", offset: match, size: sz, filename: fname }));
       }
       offset = fullEnd;
     } else {
@@ -348,11 +483,70 @@ export async function carveMedia(
   return results;
 }
 
+async function carveMediaStreaming(filePath: string, fileSize: number, outDir: string, onProgress: (pct: number, msg: string) => void): Promise<CarvedFile[]> {
+  const results: CarvedFile[] = [];
+  const CHUNK_SIZE = 32 * 1024 * 1024;
+  const OVERLAP = 64 * 1024;
+  const fd = fs.openSync(filePath, "r");
+  const buf = Buffer.alloc(CHUNK_SIZE + OVERLAP);
+  let globalOffset = 0;
+
+  const JPG_HEADER = Buffer.from([0xFF, 0xD8, 0xFF]);
+  const PNG_HEADER = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+
+  while (globalOffset < fileSize && results.length < 200) {
+    const readPos = Math.max(0, globalOffset);
+    const bytesRead = fs.readSync(fd, buf, 0, CHUNK_SIZE + OVERLAP, readPos);
+    if (bytesRead === 0) break;
+    const chunk = buf.subarray(0, bytesRead);
+
+    let pos = 0;
+    while (pos < chunk.length - 3 && results.length < 200) {
+      if (chunk[pos] === 0xFF && chunk[pos + 1] === 0xD8 && chunk[pos + 2] === 0xFF) {
+        const footer = Buffer.from([0xFF, 0xD9]);
+        const endIdx = chunk.indexOf(footer, pos + 3);
+        if (endIdx !== -1 && endIdx - pos < 50 * 1024 * 1024) {
+          const sz = endIdx + 2 - pos;
+          if (sz > 100) {
+            const absOff = readPos + pos;
+            const fname = `carved_${absOff.toString(16)}.jpg`;
+            fs.writeFileSync(path.join(outDir, fname), chunk.subarray(pos, endIdx + 2));
+            results.push(storage.addCarvedFile({ type: "jpg", offset: absOff, size: sz, filename: fname }));
+          }
+          pos = endIdx + 2;
+          continue;
+        }
+      }
+      if (pos < chunk.length - 8 && chunk.subarray(pos, pos + 8).equals(PNG_HEADER)) {
+        const pngFooter = Buffer.from([0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82]);
+        const endIdx = chunk.indexOf(pngFooter, pos + 8);
+        if (endIdx !== -1 && endIdx - pos < 50 * 1024 * 1024) {
+          const sz = endIdx + 8 - pos;
+          if (sz > 100) {
+            const absOff = readPos + pos;
+            const fname = `carved_${absOff.toString(16)}.png`;
+            fs.writeFileSync(path.join(outDir, fname), chunk.subarray(pos, endIdx + 8));
+            results.push(storage.addCarvedFile({ type: "png", offset: absOff, size: sz, filename: fname }));
+          }
+          pos = endIdx + 8;
+          continue;
+        }
+      }
+      pos++;
+    }
+
+    globalOffset += CHUNK_SIZE;
+    onProgress(5 + Math.round((globalOffset / fileSize) * 90), `Carving at offset 0x${globalOffset.toString(16)}`);
+  }
+
+  fs.closeSync(fd);
+  return results;
+}
+
 export async function extractArchive(
   filePath: string,
   onProgress: (pct: number, msg: string) => void
 ): Promise<string[]> {
-  const { createReadStream } = await import("fs");
   const extractDir = path.join(OUTPUT_DIR, "extracted_" + Date.now());
   fs.mkdirSync(extractDir, { recursive: true });
 
@@ -462,10 +656,44 @@ function collectFiles(dirPath: string, maxDepth = 10): string[] {
   return results;
 }
 
+export function generateHexDump(filePath: string, offset: number, length: number): { hex: string[][]; totalSize: number } {
+  const stat = fs.statSync(filePath);
+  const readLen = Math.min(length, stat.size - offset);
+  const fd = fs.openSync(filePath, "r");
+  const buf = Buffer.alloc(readLen);
+  fs.readSync(fd, buf, 0, readLen, offset);
+  fs.closeSync(fd);
+
+  const rows: string[][] = [];
+  for (let i = 0; i < buf.length; i += 16) {
+    const addr = (offset + i).toString(16).padStart(8, "0").toUpperCase();
+    const hexBytes: string[] = [];
+    let ascii = "";
+    for (let j = 0; j < 16; j++) {
+      if (i + j < buf.length) {
+        hexBytes.push(buf[i + j].toString(16).padStart(2, "0").toUpperCase());
+        const byte = buf[i + j];
+        ascii += (byte >= 32 && byte < 127) ? String.fromCharCode(byte) : ".";
+      } else {
+        hexBytes.push("  ");
+        ascii += " ";
+      }
+    }
+    rows.push([addr, hexBytes.join(" "), ascii]);
+  }
+
+  return { hex: rows, totalSize: stat.size };
+}
+
 export async function generateReport(
   options: {
     caseNumber?: string;
     investigator?: string;
+    agency?: string;
+    evidenceDescription?: string;
+    chainOfCustody?: string;
+    acquisitionDate?: string;
+    classification?: string;
     includeSummary: boolean;
     includeMedia: boolean;
     includeSqlite: boolean;
@@ -492,17 +720,34 @@ export async function generateReport(
 
     const summary = `<!DOCTYPE html>
 <html><head><title>JuiceSuite Forensic Report</title>
-<style>body{font-family:Inter,sans-serif;background:#1a1a1a;color:#e0e0e0;padding:40px;max-width:800px;margin:0 auto}
-h1{color:#3b82f6}table{width:100%;border-collapse:collapse;margin:20px 0}th,td{border:1px solid #333;padding:8px 12px;text-align:left}th{background:#262626}
+<style>body{font-family:Inter,sans-serif;background:#1a1a1a;color:#e0e0e0;padding:40px;max-width:900px;margin:0 auto}
+h1{color:#3b82f6}h2{border-bottom:1px solid #333;padding-bottom:8px}table{width:100%;border-collapse:collapse;margin:20px 0}th,td{border:1px solid #333;padding:8px 12px;text-align:left}th{background:#262626}
 .safe{color:#22c55e}.suggestive{color:#eab308}.sexy{color:#f97316}.explicit{color:#ef4444}
 .bb-section{border:1px solid #444;border-radius:8px;padding:20px;margin-top:20px;background:#222}
 .found{color:#22c55e} .not-found{color:#ef4444}
+.meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:16px 0}
+.meta-item{padding:8px 12px;background:#262626;border-radius:4px}
+.meta-label{font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px}
+.meta-value{font-size:14px;margin-top:4px}
+.classification-badge{display:inline-block;padding:4px 12px;border-radius:4px;font-size:12px;font-weight:bold;text-transform:uppercase;background:#333}
+.footer{margin-top:40px;padding-top:20px;border-top:1px solid #333;font-size:11px;color:#666}
 </style></head>
 <body>
 <h1>JuiceSuite Forensic Report</h1>
-<p><strong>Case:</strong> ${options.caseNumber || "N/A"}</p>
-<p><strong>Investigator:</strong> ${options.investigator || "N/A"}</p>
-<p><strong>Generated:</strong> ${new Date().toISOString()}</p>
+<span class="classification-badge">${options.classification || "internal"}</span>
+
+<div class="meta-grid">
+  <div class="meta-item"><div class="meta-label">Case Number</div><div class="meta-value">${options.caseNumber || "N/A"}</div></div>
+  <div class="meta-item"><div class="meta-label">Investigator</div><div class="meta-value">${options.investigator || "N/A"}</div></div>
+  <div class="meta-item"><div class="meta-label">Agency / Organization</div><div class="meta-value">${options.agency || "N/A"}</div></div>
+  <div class="meta-item"><div class="meta-label">Acquisition Date</div><div class="meta-value">${options.acquisitionDate || new Date().toISOString()}</div></div>
+  <div class="meta-item"><div class="meta-label">Generated</div><div class="meta-value">${new Date().toISOString()}</div></div>
+  <div class="meta-item"><div class="meta-label">Tool</div><div class="meta-value">JuiceSuite v1.0</div></div>
+</div>
+
+${options.evidenceDescription ? `<h2>Evidence Description</h2><p>${options.evidenceDescription}</p>` : ""}
+${options.chainOfCustody ? `<h2>Chain of Custody</h2><pre style="white-space:pre-wrap;background:#222;padding:16px;border-radius:8px">${options.chainOfCustody}</pre>` : ""}
+
 <h2>Media Classification Summary</h2>
 <table>
 <tr><th>Category</th><th>Count</th></tr>
@@ -553,6 +798,10 @@ ${options.includeBB ? Array.from(bbAnalysisResults.values()).map(bb => `
 <p>Total hits: ${storage.getKeywordHits().length}</p>
 <h2>Carved Files</h2>
 <p>Total carved: ${storage.getCarvedFiles().length}</p>
+
+<div class="footer">
+  <p>This report was generated by JuiceSuite. All processing was performed server-side with no external API calls.</p>
+</div>
 </body></html>`;
 
     archive.append(summary, { name: "report/summary.html" });
@@ -562,8 +811,8 @@ ${options.includeBB ? Array.from(bbAnalysisResults.values()).map(bb => `
 
   if (options.includeMedia) {
     const media = storage.getScannedMedia();
-    const csv = "filename,category,size,hash,mimeType\n" +
-      media.map(m => `"${m.filename}","${m.category}",${m.size},"${m.hash || ""}","${m.mimeType}"`).join("\n");
+    const csv = "filename,category,confidence,reasonTags,size,hash,mimeType\n" +
+      media.map(m => `"${m.filename}","${m.category}",${m.confidence || ""},"${(m.reasonTags || []).join(";")}",${m.size},"${m.hash || ""}","${m.mimeType}"`).join("\n");
     archive.append(csv, { name: "report/media_results.csv" });
   }
 
@@ -606,6 +855,9 @@ ${options.includeBB ? Array.from(bbAnalysisResults.values()).map(bb => `
 
   await archive.finalize();
   await new Promise<void>((resolve) => output.on("close", resolve));
+
+  const reportHash = hashFileStreaming(outPath, "sha256");
+  storage.addLog("info", `Report integrity hash (SHA-256): ${reportHash}`, "ReportModule");
 
   onProgress(100, "Report ZIP ready");
   return outPath;

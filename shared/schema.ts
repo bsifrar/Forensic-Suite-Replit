@@ -17,6 +17,8 @@ export interface Job {
   status: JobStatus;
   startTime: string;
   result?: any;
+  errorMessage?: string;
+  params?: Record<string, any>;
 }
 
 export interface LogEntry {
@@ -104,12 +106,29 @@ export const stringsExtractSchema = z.object({
 export const reportSchema = z.object({
   caseNumber: z.string().optional(),
   investigator: z.string().optional(),
+  agency: z.string().optional(),
+  evidenceDescription: z.string().optional(),
+  chainOfCustody: z.string().optional(),
+  acquisitionDate: z.string().optional(),
+  classification: z.enum(["confidential", "internal", "public"]).default("internal"),
   includeSummary: z.boolean().default(true),
   includeMedia: z.boolean().default(true),
   includeSqlite: z.boolean().default(true),
   includeLogs: z.boolean().default(false),
   includeBB: z.boolean().default(false),
 });
+
+export const settingsSchema = z.object({
+  hashAlgorithm: z.enum(["md5", "sha1", "sha256"]).default("sha256"),
+  minStringLength: z.number().min(1).max(256).default(4),
+  includeVideos: z.boolean().default(true),
+  includeGifs: z.boolean().default(true),
+  recursiveScan: z.boolean().default(true),
+  exportFormat: z.enum(["csv", "json"]).default("csv"),
+  compactMode: z.boolean().default(false),
+});
+
+export type AppSettings = z.infer<typeof settingsSchema>;
 
 export type User = { id: string; username: string; password: string };
 export type InsertUser = { username: string; password: string };

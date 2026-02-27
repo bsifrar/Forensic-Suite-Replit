@@ -62,6 +62,7 @@ export default function MediaScanner() {
   const [duplicates, setDuplicates] = useState<DuplicateGroup[]>([]);
   const [dupStats, setDupStats] = useState({ totalDuplicates: 0, totalWasted: 0 });
   const [removingDups, setRemovingDups] = useState(false);
+  const [fileProgress, setFileProgress] = useState<{ currentFile: string; fileIndex: number; totalFiles: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handlePrevMedia = () => {
@@ -117,6 +118,10 @@ export default function MediaScanner() {
       fetchMedia(activeTab === "duplicates" ? "all" : activeTab);
       fetchStats();
       fetchDuplicates();
+      setFileProgress(null);
+    }
+    if (lastMessage?.type === "scan_file_progress") {
+      setFileProgress(lastMessage.data);
     }
   }, [lastMessage, activeTab, fetchMedia, fetchStats, fetchDuplicates]);
 
@@ -225,7 +230,7 @@ export default function MediaScanner() {
         </div>
       </div>
 
-      {!hasScanned && (
+      {!hasScanned && !fileProgress && (
         <DropZone
           testId="card-dropzone"
           onFiles={handleDropFiles}
@@ -237,6 +242,25 @@ export default function MediaScanner() {
           loadingText="Uploading..."
           buttonText="Browse Files"
         />
+      )}
+
+      {fileProgress && (
+        <div data-testid="card-scan-progress" className="border border-blue-500/30 rounded-xl bg-blue-500/5 p-6 space-y-4 animate-in fade-in">
+          <div className="flex items-center gap-3">
+            <Loader2 className="w-5 h-5 text-blue-400 animate-spin" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-white">Processing file {fileProgress.fileIndex + 1} of {fileProgress.totalFiles}</p>
+              <p className="text-xs text-muted-foreground font-mono truncate">{fileProgress.currentFile}</p>
+            </div>
+            <span className="text-sm font-bold text-blue-400">{Math.round(((fileProgress.fileIndex + 1) / fileProgress.totalFiles) * 100)}%</span>
+          </div>
+          <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden">
+            <div
+              className="bg-blue-500 h-full rounded-full transition-all duration-300"
+              style={{ width: `${((fileProgress.fileIndex + 1) / fileProgress.totalFiles) * 100}%` }}
+            />
+          </div>
+        </div>
       )}
 
       {hasScanned && (

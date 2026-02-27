@@ -2,11 +2,11 @@ import { useAppContext } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Progress } from "@/components/ui/progress";
-import { Activity, XCircle, CheckCircle2, AlertCircle } from "lucide-react";
+import { Activity, XCircle, CheckCircle2, AlertCircle, RotateCcw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 export default function JobQueue() {
-  const { jobs, cancelJob } = useAppContext();
+  const { jobs, cancelJob, retryJob } = useAppContext();
   
   const runningCount = jobs.filter(j => j.status === "running" || j.status === "pending").length;
 
@@ -52,7 +52,26 @@ export default function JobQueue() {
                   )}
                   {job.status === "cancelled" && <span className="text-[10px] text-red-400 font-medium">Cancelled</span>}
                   {job.status === "completed" && <span className="text-[10px] text-green-400 font-medium">Completed</span>}
-                  {job.status === "failed" && <span className="text-[10px] text-red-400 font-medium">Failed</span>}
+                  {job.status === "failed" && (
+                    <div className="flex flex-col gap-1.5">
+                      {job.errorMessage && (
+                        <div className="text-[10px] text-red-300/80 bg-red-500/10 border border-red-500/20 rounded px-2 py-1 font-mono break-all">
+                          {job.errorMessage}
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-red-400 font-medium">Failed</span>
+                        <button
+                          data-testid={`button-retry-job-${job.id}`}
+                          onClick={() => retryJob(job.id)}
+                          className="flex items-center gap-1 text-[10px] text-amber-400 hover:text-amber-300 transition-colors"
+                        >
+                          <RotateCcw className="w-3 h-3" />
+                          Retry
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

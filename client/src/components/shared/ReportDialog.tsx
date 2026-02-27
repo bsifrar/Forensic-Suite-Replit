@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FileText, Archive, Loader2 } from "lucide-react";
 import { useAppContext } from "@/lib/store";
 
@@ -17,6 +19,11 @@ export default function ReportDialog({ open, onOpenChange }: ReportDialogProps) 
   const [isGenerating, setIsGenerating] = useState(false);
   const [caseNumber, setCaseNumber] = useState("");
   const [investigator, setInvestigator] = useState("");
+  const [agency, setAgency] = useState("");
+  const [evidenceDescription, setEvidenceDescription] = useState("");
+  const [chainOfCustody, setChainOfCustody] = useState("");
+  const [acquisitionDate, setAcquisitionDate] = useState(new Date().toISOString().split('T')[0]);
+  const [classification, setClassification] = useState("internal");
   const [includeSummary, setIncludeSummary] = useState(true);
   const [includeMedia, setIncludeMedia] = useState(true);
   const [includeSqlite, setIncludeSqlite] = useState(true);
@@ -29,7 +36,20 @@ export default function ReportDialog({ open, onOpenChange }: ReportDialogProps) 
       await fetch("/api/report", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ caseNumber, investigator, includeSummary, includeMedia, includeSqlite, includeLogs, includeBB }),
+        body: JSON.stringify({ 
+          caseNumber, 
+          investigator, 
+          agency, 
+          evidenceDescription, 
+          chainOfCustody, 
+          acquisitionDate, 
+          classification, 
+          includeSummary, 
+          includeMedia, 
+          includeSqlite, 
+          includeLogs, 
+          includeBB 
+        }),
       });
       onOpenChange(false);
     } catch {}
@@ -53,18 +73,68 @@ export default function ReportDialog({ open, onOpenChange }: ReportDialogProps) 
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-6 py-4">
-          <div className="grid gap-2">
-            <Label htmlFor="case-number" className="text-white/80">Case Number / Reference</Label>
-            <Input data-testid="input-case-number" id="case-number" placeholder="e.g. 2023-F-1402" className="bg-black/40 border-white/10" value={caseNumber} onChange={(e) => setCaseNumber(e.target.value)} />
-          </div>
-          
-          <div className="grid gap-2">
-            <Label htmlFor="investigator" className="text-white/80">Investigator Name</Label>
-            <Input data-testid="input-investigator" id="investigator" placeholder="Jane Doe" className="bg-black/40 border-white/10" value={investigator} onChange={(e) => setInvestigator(e.target.value)} />
+        <div className="grid gap-6 py-4 max-h-[70vh] overflow-y-auto pr-2">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-2">
+              <Label htmlFor="case-number" className="text-white/80">Case Number</Label>
+              <Input data-testid="input-case-number" id="case-number" placeholder="e.g. 2023-F-1402" className="bg-black/40 border-white/10" value={caseNumber} onChange={(e) => setCaseNumber(e.target.value)} />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="investigator" className="text-white/80">Investigator Name</Label>
+              <Input data-testid="input-investigator" id="investigator" placeholder="Jane Doe" className="bg-black/40 border-white/10" value={investigator} onChange={(e) => setInvestigator(e.target.value)} />
+            </div>
           </div>
 
-          <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-2">
+              <Label htmlFor="agency" className="text-white/80">Agency / Organization</Label>
+              <Input data-testid="input-agency" id="agency" placeholder="Digital Forensics Unit" className="bg-black/40 border-white/10" value={agency} onChange={(e) => setAgency(e.target.value)} />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="acquisition-date" className="text-white/80">Acquisition Date</Label>
+              <Input data-testid="input-acquisition-date" id="acquisition-date" type="date" className="bg-black/40 border-white/10" value={acquisitionDate} onChange={(e) => setAcquisitionDate(e.target.value)} />
+            </div>
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="classification" className="text-white/80">Report Classification</Label>
+            <Select value={classification} onValueChange={setClassification}>
+              <SelectTrigger id="classification" className="bg-black/40 border-white/10">
+                <SelectValue placeholder="Select classification" />
+              </SelectTrigger>
+              <SelectContent className="bg-[#1a1b1e] border-white/10">
+                <SelectItem value="public">Public</SelectItem>
+                <SelectItem value="internal">Internal Use Only</SelectItem>
+                <SelectItem value="confidential">Confidential / Law Enforcement Sensitive</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="evidence-description" className="text-white/80">Evidence Description</Label>
+            <Textarea 
+              data-testid="input-evidence-description" 
+              id="evidence-description" 
+              placeholder="e.g. 1x iPhone 13, Serial #..." 
+              className="bg-black/40 border-white/10 min-h-[80px]" 
+              value={evidenceDescription} 
+              onChange={(e) => setEvidenceDescription(e.target.value)} 
+            />
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="chain-of-custody" className="text-white/80">Chain of Custody Notes</Label>
+            <Textarea 
+              data-testid="input-chain-of-custody" 
+              id="chain-of-custody" 
+              placeholder="Collected from evidence locker #4..." 
+              className="bg-black/40 border-white/10 min-h-[80px]" 
+              value={chainOfCustody} 
+              onChange={(e) => setChainOfCustody(e.target.value)} 
+            />
+          </div>
+
+          <div className="space-y-3 pt-2 border-t border-white/5">
             <Label className="text-white/80">Include in Archive</Label>
             <div className="flex flex-col gap-2.5">
               <label className="flex items-center space-x-3 cursor-pointer group">

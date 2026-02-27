@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useAppContext } from "@/lib/store";
-import { Search, Database, FileCode2, Smartphone, HardDrive, Archive, Download, FileText, Image as ImageIcon, Loader2, Upload, Lock, Key, Shield, ChevronDown, ChevronRight, MessageSquare, Users, Disc, BarChart3, Calendar, Clock, FileImage, Activity, CheckCircle2, XCircle, AlertTriangle, Info } from "lucide-react";
+import { Search, Database, FileCode2, Smartphone, HardDrive, Archive, Download, FileText, Image as ImageIcon, Loader2, Upload, Lock, Key, Shield, ChevronDown, ChevronRight, MessageSquare, Users, Disc, BarChart3, Calendar, Clock, FileImage, Activity, CheckCircle2, XCircle, AlertTriangle, Info, Binary, ChevronLeft } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -231,6 +231,11 @@ export default function ArtifactAnalyzer() {
     await fetch("/api/upload", { method: "POST", body: formData });
   };
 
+  const [hexData, setHexData] = useState<{ hex: string[][]; totalSize: number; filename?: string; filePath?: string } | null>(null);
+  const [hexOffset, setHexOffset] = useState(0);
+  const [hexLoading, setHexLoading] = useState(false);
+  const hexInputRef = useRef<HTMLInputElement>(null);
+
   const [bbError, setBBError] = useState<string | null>(null);
 
   const handleBBUpload = async (files: File[]) => {
@@ -266,6 +271,35 @@ export default function ArtifactAnalyzer() {
     } finally {
       setBBDecrypting(false);
     }
+  };
+
+  const handleHexUpload = async (files: File[]) => {
+    if (files.length === 0) return;
+    setHexLoading(true);
+    setHexOffset(0);
+    const formData = new FormData();
+    formData.append("file", files[0]);
+    formData.append("offset", "0");
+    formData.append("length", "4096");
+    try {
+      const res = await fetch("/api/hex/view", { method: "POST", body: formData });
+      if (res.ok) setHexData(await res.json());
+    } catch {}
+    setHexLoading(false);
+  };
+
+  const loadHexPage = async (newOffset: number) => {
+    if (!hexData?.filePath) return;
+    setHexLoading(true);
+    setHexOffset(newOffset);
+    try {
+      const res = await fetch(`/api/hex/view?file=${encodeURIComponent(hexData.filePath)}&offset=${newOffset}&length=4096`);
+      if (res.ok) {
+        const data = await res.json();
+        setHexData(prev => ({ ...data, filename: prev?.filename, filePath: prev?.filePath }));
+      }
+    } catch {}
+    setHexLoading(false);
   };
 
   const toggleKeyFile = (filename: string) => {
@@ -327,6 +361,9 @@ export default function ArtifactAnalyzer() {
           </TabsTrigger>
           <TabsTrigger value="archives" className="data-[state=active]:bg-blue-600/20 data-[state=active]:text-blue-400">
             <Archive className="w-4 h-4 mr-2" /> Archives
+          </TabsTrigger>
+          <TabsTrigger value="hex" className="data-[state=active]:bg-emerald-600/20 data-[state=active]:text-emerald-400">
+            <Binary className="w-4 h-4 mr-2" /> Hex Viewer
           </TabsTrigger>
         </TabsList>
 
@@ -1198,6 +1235,98 @@ export default function ArtifactAnalyzer() {
                   {extractedArchiveFiles.map((f, i) => (
                     <div key={i} className="py-1 border-b border-white/5 text-white/70">{f}</div>
                   ))}
+                </div>
+              </Card>
+            )}
+          </TabsContent>
+
+          {/* Hex Viewer */}
+          <TabsContent value="hex" className="m-0 h-[600px]">
+            {!hexData ? (
+              <DropZone
+                testId="dropzone-hex"
+                onFiles={handleHexUpload}
+                icon={<Binary className="w-10 h-10 text-emerald-400" />}
+                title="Hex Viewer"
+                description="Upload any file to browse its raw binary content. View hex bytes alongside ASCII representation with offset navigation."
+                multiple={false}
+                loading={hexLoading}
+                loadingText="Loading hex data..."
+                buttonText="Upload File"
+              />
+            ) : (
+              <Card className="border-white/10 glass-panel h-full flex flex-col overflow-hidden">
+                <div className="border-b border-white/10 p-4 bg-black/20 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Binary className="w-5 h-5 text-emerald-400" />
+                    <div>
+                      <span className="font-medium text-sm text-white">{hexData.filename || "File"}</span>
+                      <span className="text-xs text-muted-foreground ml-3">{formatSize(hexData.totalSize)} total</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">Offset: 0x{hexOffset.toString(16).toUpperCase().padStart(8, "0")}</span>
+                    <Button
+                      data-testid="button-hex-prev"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2 border-white/10"
+                      disabled={hexOffset === 0 || hexLoading}
+                      onClick={() => loadHexPage(Math.max(0, hexOffset - 4096))}
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      data-testid="button-hex-next"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2 border-white/10"
+                      disabled={hexOffset + 4096 >= hexData.totalSize || hexLoading}
+                      onClick={() => loadHexPage(hexOffset + 4096)}
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-7 border-white/10" onClick={() => { setHexData(null); setHexOffset(0); }}>
+                      New File
+                    </Button>
+                  </div>
+                </div>
+                <div className="flex-1 overflow-auto p-0">
+                  {hexLoading ? (
+                    <div className="flex items-center justify-center h-32">
+                      <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : (
+                    <table className="w-full font-mono text-[11px] leading-5">
+                      <thead className="bg-black/40 sticky top-0">
+                        <tr>
+                          <th className="text-left px-3 py-1.5 text-emerald-400/60 font-medium w-24">Offset</th>
+                          <th className="text-left px-3 py-1.5 text-emerald-400/60 font-medium">Hex</th>
+                          <th className="text-left px-3 py-1.5 text-emerald-400/60 font-medium w-40">ASCII</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {hexData.hex.map((row, i) => (
+                          <tr key={i} className="border-b border-white/5 hover:bg-white/5">
+                            <td className="px-3 py-0.5 text-emerald-400/50">{row[0]}</td>
+                            <td className="px-3 py-0.5 text-white/80 tracking-wide">
+                              {row[1].split(" ").map((byte, j) => {
+                                const val = parseInt(byte, 16);
+                                const isNull = byte === "00";
+                                const isPrintable = val >= 32 && val < 127;
+                                return (
+                                  <span key={j} className={`${isNull ? "text-white/20" : isPrintable ? "text-white/80" : "text-amber-400/60"}`}>
+                                    {byte}{" "}
+                                  </span>
+                                );
+                              })}
+                            </td>
+                            <td className="px-3 py-0.5 text-cyan-400/60 whitespace-pre">{row[2]}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
                 </div>
               </Card>
             )}

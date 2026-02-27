@@ -1,0 +1,99 @@
+JuiceSuite Feature Comparison Report
+Generated on: Fri Feb 27 12:44:25 AM UTC 2026
+======================================
+--- MediaScannerPro-MacOS-Replit ---
+Status: EMPTY (No files found)
+
+--- MediaScannerPro-IOS-Replit ---
+Status: EMPTY (No files found)
+
+--- Artifact-Analyzer-Replit ---
+Status: EMPTY (No files found)
+
+--- JuiceLabPro-Replit ---
+Status: EMPTY (No files found)
+
+--- Forensic-Suite-Replit ---
+Status: EMPTY (No files found)
+
+--- JuiceLabProNative-Xcode ---
+Status: EMPTY (No files found)
+
+--- JuiceLabProNative-Xcode-CLONE ---
+Status: EMPTY (No files found)
+
+--- JuiceSuite (Current) ---
+Exported Functions:
+  - analyzeBBBackup
+  - apiRequest
+  - AppProvider
+  - carveMedia
+  - cn
+  - decryptRemFile
+  - detectBackups
+  - ensureDirs
+  - exploreSqlite
+  - extractArchive
+  - extractStrings
+  - generateReport
+  - getOutputDir
+  - getQueryFn
+  - getUploadDir
+  - keywordSearch
+  - log
+  - parsePlist
+  - queryClient
+  - reducer
+  - registerRoutes
+  - scanMediaFiles
+  - serveStatic
+  - setupVite
+  - storage
+  - Toaster
+  - useAppContext
+  - useIsMobile
+Route Definitions:
+  - [delete] /api/logs
+  - [get] /api/backups
+  - [get] /api/bb/results/:sessionId
+  - [get] /api/carved
+  - [get] /api/carved/:filename
+  - [get] /api/jobs
+  - [get] /api/logs
+  - [get] /api/media
+  - [get] /api/media/duplicates
+  - [get] /api/media/export
+  - [get] /api/media/file/:id
+  - [get] /api/media/stats
+  - [get] /api/plist/data
+  - [get] /api/report/download/:filename
+  - [get] /api/search/hits
+  - [get] /api/sqlite/rows/:table
+  - [get] /api/sqlite/tables
+  - [get] /api/strings
+  - [post] /api/archive/extract
+  - [post] /api/bb/analyze
+  - [post] /api/bb/decrypt/:sessionId
+  - [post] /api/carve
+  - [post] /api/jobs/:id/cancel
+  - [post] /api/media/duplicates/remove
+  - [post] /api/plist/parse
+  - [post] /api/report
+  - [post] /api/search
+  - [post] /api/sqlite/explore
+  - [post] /api/strings/extract
+  - [post] /api/upload
+UI Components:
+  - AppProvider
+  - ArtifactAnalyzer
+  - DashboardLayout
+  - DropZone
+  - JobQueue
+  - LogsPanel
+  - MediaDetailModal
+  - MediaScanner
+  - NotFound
+  - ReportDialog
+  - Settings
+  - Toaster
+======================================

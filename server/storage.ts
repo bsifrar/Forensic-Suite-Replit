@@ -1,8 +1,8 @@
 import { randomUUID } from "crypto";
-import type { Job, LogEntry, ScannedMedia, KeywordHit, DetectedBackup, CarvedFile, ExtractedString, SqliteTableInfo, JobStatus } from "@shared/schema";
+import type { Job, LogEntry, ScannedMedia, KeywordHit, DetectedBackup, CarvedFile, ExtractedString, SqliteTableInfo, JobStatus, AppSettings } from "@shared/schema";
 
 export interface IStorage {
-  createJob(name: string, type: Job["type"]): Job;
+  createJob(name: string, type: Job["type"], params?: Record<string, any>): Job;
   getJob(id: string): Job | undefined;
   getAllJobs(): Job[];
   updateJob(id: string, updates: Partial<Job>): Job | undefined;
@@ -36,6 +36,9 @@ export interface IStorage {
 
   setPlistData(data: any): void;
   getPlistData(): any;
+
+  getSettings(): AppSettings;
+  updateSettings(updates: Partial<AppSettings>): AppSettings;
 }
 
 export class MemStorage implements IStorage {
@@ -49,8 +52,17 @@ export class MemStorage implements IStorage {
   private sqliteTables: SqliteTableInfo[] = [];
   private sqliteRowsMap: Map<string, any[]> = new Map();
   private plistData: any = null;
+  private settings: AppSettings = {
+    hashAlgorithm: "sha256",
+    minStringLength: 4,
+    includeVideos: true,
+    includeGifs: true,
+    recursiveScan: true,
+    exportFormat: "csv",
+    compactMode: false,
+  };
 
-  createJob(name: string, type: Job["type"]): Job {
+  createJob(name: string, type: Job["type"], params?: Record<string, any>): Job {
     const job: Job = {
       id: randomUUID(),
       name,
@@ -58,6 +70,7 @@ export class MemStorage implements IStorage {
       progress: 0,
       status: "pending",
       startTime: new Date().toISOString(),
+      params,
     };
     this.jobs.set(job.id, job);
     return job;
@@ -185,6 +198,15 @@ export class MemStorage implements IStorage {
 
   getPlistData(): any {
     return this.plistData;
+  }
+
+  getSettings(): AppSettings {
+    return { ...this.settings };
+  }
+
+  updateSettings(updates: Partial<AppSettings>): AppSettings {
+    this.settings = { ...this.settings, ...updates };
+    return { ...this.settings };
   }
 }
 

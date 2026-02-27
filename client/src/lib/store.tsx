@@ -10,6 +10,8 @@ export interface Job {
   status: JobStatus;
   startTime: string;
   result?: any;
+  errorMessage?: string;
+  params?: Record<string, any>;
 }
 
 export interface LogEntry {
@@ -26,6 +28,7 @@ interface AppContextType {
   refreshJobs: () => Promise<void>;
   refreshLogs: () => Promise<void>;
   cancelJob: (id: string) => Promise<void>;
+  retryJob: (id: string) => Promise<void>;
   clearLogs: () => Promise<void>;
   isLogsOpen: boolean;
   setLogsOpen: (open: boolean) => void;
@@ -81,9 +84,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
 
     ws.onclose = () => {
-      setTimeout(() => {
-        // reconnect handled by page refresh for simplicity
-      }, 3000);
+      setTimeout(() => {}, 3000);
     };
 
     return () => ws.close();
@@ -113,6 +114,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch {}
   }, []);
 
+  const retryJob = useCallback(async (id: string) => {
+    try {
+      const res = await fetch(`/api/jobs/${id}/retry`, { method: "POST" });
+      if (res.ok) {
+        const newJob = await res.json();
+        setJobs(prev => [newJob, ...prev]);
+      }
+    } catch {}
+  }, []);
+
   const clearLogs = useCallback(async () => {
     try {
       await fetch("/api/logs", { method: "DELETE" });
@@ -128,7 +139,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [refreshLogs]);
 
   return (
-    <AppContext.Provider value={{ jobs, logs, refreshJobs, refreshLogs, cancelJob, clearLogs, isLogsOpen, setLogsOpen, wsMessages, lastMessage }}>
+    <AppContext.Provider value={{ jobs, logs, refreshJobs, refreshLogs, cancelJob, retryJob, clearLogs, isLogsOpen, setLogsOpen, wsMessages, lastMessage }}>
       {children}
     </AppContext.Provider>
   );

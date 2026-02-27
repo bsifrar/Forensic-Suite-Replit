@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Settings as SettingsIcon, Hash, FileText, Image as ImageIcon, Monitor, Save } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Settings as SettingsIcon, Hash, FileText, Image as ImageIcon, Monitor, Save, Loader2, CheckCircle2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,12 +14,49 @@ export default function Settings() {
   const [recursiveScan, setRecursiveScan] = useState(true);
   const [exportFormat, setExportFormat] = useState("csv");
   const [compactMode, setCompactMode] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  const handleSave = () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  useEffect(() => {
+    fetch("/api/settings")
+      .then(r => r.json())
+      .then(data => {
+        setHashAlgorithm(data.hashAlgorithm || "sha256");
+        setMinStringLength(data.minStringLength || 4);
+        setIncludeVideos(data.includeVideos ?? true);
+        setIncludeGifs(data.includeGifs ?? true);
+        setRecursiveScan(data.recursiveScan ?? true);
+        setExportFormat(data.exportFormat || "csv");
+        setCompactMode(data.compactMode ?? false);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hashAlgorithm, minStringLength, includeVideos, includeGifs, recursiveScan, exportFormat, compactMode }),
+      });
+      if (res.ok) {
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2000);
+      }
+    } catch {}
+    setSaving(false);
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6 h-full max-w-3xl">
@@ -28,8 +65,8 @@ export default function Settings() {
           <h2 data-testid="text-settings-title" className="text-3xl font-bold text-white tracking-tight">Settings</h2>
           <p className="text-muted-foreground mt-1">Configure analysis parameters and UI preferences.</p>
         </div>
-        <Button data-testid="button-save-settings" onClick={handleSave} className="bg-blue-600 hover:bg-blue-700 text-white">
-          <Save className="w-4 h-4 mr-2" />
+        <Button data-testid="button-save-settings" onClick={handleSave} disabled={saving} className="bg-blue-600 hover:bg-blue-700 text-white">
+          {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : saved ? <CheckCircle2 className="w-4 h-4 mr-2 text-green-300" /> : <Save className="w-4 h-4 mr-2" />}
           {saved ? "Saved" : "Save Settings"}
         </Button>
       </div>

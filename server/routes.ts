@@ -6,6 +6,8 @@ import path from "path";
 import fs from "fs";
 import { storage } from "./storage";
 import { keywordSearchSchema, stringsExtractSchema, reportSchema } from "@shared/schema";
+import { settingsSchema } from "@shared/schema";
+import { getSignatures, getEnabledSignatures, setSignatureEnabled } from "./analyzers";
 import {
   getUploadDir,
   getOutputDir,
@@ -18,6 +20,7 @@ import {
   extractArchive,
   detectBackups,
   generateReport,
+  generateHexDump,
 } from "./processors";
 import { analyzeBBBackup, decryptRemFile, type BBAnalysisResult } from "./bbAnalyzer";
 
@@ -116,13 +119,15 @@ export async function registerRoutes(
             await extractArchive(movedFiles[0], progressFn);
             const extractedDir = path.join(getOutputDir(), fs.readdirSync(getOutputDir()).find(d => d.startsWith("extracted_")) || "");
             const scanDir = fs.existsSync(extractedDir) ? extractedDir : uploadDir;
-            await scanMediaFiles(scanDir, progressFn);
+            await scanMediaFiles(scanDir, progressFn, (fp) => {
+              broadcast("scan_file_progress", { jobId: job.id, ...fp });
+            });
             storage.updateJob(job.id, { status: "completed", progress: 100 });
             storage.addLog("success", `Completed scan: ${files[0].originalname}`, "MediaScanner");
             broadcast("job_update", storage.getJob(job.id));
             broadcast("scan_complete", { media: storage.getScannedMedia() });
           } catch (e: any) {
-            storage.updateJob(job.id, { status: "failed" });
+            storage.updateJob(job.id, { status: "failed", errorMessage: e.message });
             storage.addLog("error", `Scan failed: ${e.message}`, "MediaScanner");
             broadcast("job_update", storage.getJob(job.id));
           }
@@ -133,13 +138,15 @@ export async function registerRoutes(
         (async () => {
           try {
             storage.updateJob(job.id, { status: "running" });
-            await scanMediaFiles(uploadDir, makeProgressFn(job.id));
+            await scanMediaFiles(uploadDir, makeProgressFn(job.id), (fp) => {
+              broadcast("scan_file_progress", { jobId: job.id, ...fp });
+            });
             storage.updateJob(job.id, { status: "completed", progress: 100 });
             storage.addLog("success", `Scanned ${files.length} files`, "MediaScanner");
             broadcast("job_update", storage.getJob(job.id));
             broadcast("scan_complete", { media: storage.getScannedMedia() });
           } catch (e: any) {
-            storage.updateJob(job.id, { status: "failed" });
+            storage.updateJob(job.id, { status: "failed", errorMessage: e.message });
             storage.addLog("error", `Scan failed: ${e.message}`, "MediaScanner");
             broadcast("job_update", storage.getJob(job.id));
           }
@@ -543,6 +550,76 @@ export async function registerRoutes(
     storage.addLog("info", `Removed ${removed} duplicate media files`, "MediaScanner");
     broadcast("scan_complete", { media: storage.getScannedMedia() });
     res.json({ removed });
+  });
+
+  // --- Settings ---
+  app.get("/api/settings", (_req, res) => {
+    res.json(storage.getSettings());
+  });
+
+  app.put("/api/settings", (req, res) => {
+    const parsed = settingsSchema.partial().safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+    const updated = storage.updateSettings(parsed.data);
+    storage.addLog("info", `Settings updated: ${Object.keys(parsed.data).join(", ")}`, "Settings");
+    res.json(updated);
+  });
+
+  // --- Hex Viewer ---
+  app.post("/api/hex/view", upload.single("file"), (req, res) => {
+    const file = req.file;
+    if (!file) return res.status(400).json({ error: "No file provided" });
+
+    const dest = path.join(getUploadDir(), "hex", file.originalname);
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.renameSync(file.path, dest);
+
+    const offset = parseInt(req.body.offset) || 0;
+    const length = parseInt(req.body.length) || 4096;
+    try {
+      const result = generateHexDump(dest, offset, Math.min(length, 65536));
+      res.json({ ...result, filename: file.originalname, filePath: dest });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get("/api/hex/view", (req, res) => {
+    const filePath = req.query.file as string;
+    const offset = parseInt(req.query.offset as string) || 0;
+    const length = parseInt(req.query.length as string) || 4096;
+    if (!filePath || !fs.existsSync(filePath)) return res.status(404).json({ error: "File not found" });
+    try {
+      const result = generateHexDump(filePath, offset, Math.min(length, 65536));
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // --- Carve Signatures ---
+  app.get("/api/carve/signatures", (_req, res) => {
+    res.json(getSignatures());
+  });
+
+  app.put("/api/carve/signatures/:name", (req, res) => {
+    const { enabled } = req.body;
+    if (typeof enabled !== "boolean") return res.status(400).json({ error: "enabled must be boolean" });
+    const ok = setSignatureEnabled(req.params.name, enabled);
+    if (!ok) return res.status(404).json({ error: "Signature not found" });
+    res.json(getSignatures());
+  });
+
+  // --- Job Retry ---
+  app.post("/api/jobs/:id/retry", (req, res) => {
+    const originalJob = storage.getJob(req.params.id);
+    if (!originalJob) return res.status(404).json({ error: "Job not found" });
+    if (originalJob.status !== "failed") return res.status(400).json({ error: "Only failed jobs can be retried" });
+
+    const newJob = storage.createJob(`Retry: ${originalJob.name}`, originalJob.type, originalJob.params);
+    broadcast("job_update", newJob);
+    storage.addLog("info", `Retrying job: ${originalJob.name}`, "JobQueue");
+    res.json(newJob);
   });
 
   // --- Media File Export ---

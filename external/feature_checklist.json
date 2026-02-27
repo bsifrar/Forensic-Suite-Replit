@@ -1,0 +1,86 @@
+{
+  "Media Classification": {
+    "NSFW categories": "nsfw|porn|hentai|sexy|neutral|drawing",
+    "reason tags": "reason|tag",
+    "confidence scores": "confidence|score",
+    "per-file progress": "file_progress|currentFile|totalFiles",
+    "batch processing": "batch|process"
+  },
+  "Duplicate Detection": {
+    "hash grouping": "hash|group|md5|sha256",
+    "wasted space calc": "wasted|space|size",
+    "removal": "delete|remove|unlink",
+    "visual diff": "diff|compare"
+  },
+  "Media Viewer": {
+    "detail modal": "MediaDetailModal|Dialog",
+    "full-size preview": "preview|src|url",
+    "prev/next nav": "prev|next",
+    "EXIF display": "exif|metadata",
+    "video playback": "video|player|mp4"
+  },
+  "View Modes": {
+    "grid view": "grid|LayoutGrid",
+    "list view": "list|Table",
+    "sort controls": "sort|orderBy",
+    "type filters": "filter|category",
+    "bulk selection": "select|multiple|batch"
+  },
+  "Forensic Analysis": {
+    "SQLite explorer": "sqlite|db|table",
+    "plist viewer": "plist|xml|binary",
+    "strings extraction": "strings|extract",
+    "file carving (JPG/PNG/PDF/ZIP)": "carve|signature|header|footer",
+    "keyword search (text+hex)": "keyword|search|find",
+    "hex viewer": "hex|dump|viewer"
+  },
+  "Backup Detection": {
+    "iOS MobileSync": "mobilesync|backup|apple",
+    "BB IPD/BBB/TAR": "ipd|bbb|tar|blackberry",
+    "Android ADB": "adb|android|backup",
+    "format confidence": "confidence|detect"
+  },
+  "BB Forensics": {
+    "REMF detection": "rem|remf|blackberry",
+    "BBThumbs parsing": "bbthumbs|thumb",
+    "date decoding": "date|decode|timestamp",
+    "BB10 paths": "bb10|path",
+    "event logs": "event|log",
+    "decryption": "decrypt|crypto"
+  },
+  "Job System": {
+    "creation": "createJob|job",
+    "progress tracking": "progress|percent",
+    "cancellation": "cancel|abort",
+    "WebSocket updates": "socket|emit|broadcast",
+    "per-file progress": "file_progress|fileIndex",
+    "retry": "retry"
+  },
+  "Export/Reporting": {
+    "CSV": "csv|export",
+    "JSON": "json|export",
+    "HTML summary": "html|report",
+    "ZIP packaging": "zip|archiver",
+    "BB section": "blackberry|report",
+    "case metadata": "case|investigator|agency",
+    "chain-of-custody": "chain|custody"
+  },
+  "Settings": {
+    "hash algorithm": "hash|algorithm|md5|sha256",
+    "scan config": "config|settings",
+    "export format": "exportFormat",
+    "UI preferences": "theme|preferences",
+    "persistence": "save|storage|db"
+  },
+  "Large File Handling": {
+    "streaming uploads": "stream|upload|multer",
+    "streaming reads": "createReadStream",
+    "chunked processing": "chunk|buffer",
+    "memory guards": "memory|usage|heap"
+  },
+  "Plugin Architecture": {
+    "modular analyzers": "analyzer|module|plugin",
+    "signature registry": "signature|registry",
+    "custom carving rules": "carving|rule"
+  }
+}
